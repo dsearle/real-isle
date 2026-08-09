@@ -6,6 +6,7 @@ import {
   monitoredSources,
   policyTopicCatalogue,
 } from "./catalogue";
+import { ensureEvidenceTriggers } from "./triggers";
 
 function sortName(fullName: string) {
   const parts = fullName.trim().split(/\s+/);
@@ -39,6 +40,7 @@ function sourceStatement(db: D1Database, source: MonitoredSource) {
 }
 
 export async function seedEvidenceReferenceData(db: D1Database) {
+  await ensureEvidenceTriggers(db);
   const statements: D1PreparedStatement[] = [
     db
       .prepare(

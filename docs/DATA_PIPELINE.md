@@ -18,8 +18,9 @@ positions and summaries must link to their supporting source records.
    ingestion runs, editorial state and disputes are recorded in the `DB` D1
    database.
 5. Every material change appends a hash-linked audit event. Immutable database
-   triggers protect source captures, versions, decisions and revisions from
-   being rewritten in place.
+   triggers, installed idempotently by the evidence service after schema setup,
+   protect source captures, versions, decisions and revisions from being
+   rewritten in place.
 6. New records enter the admin review inbox. Only an explicit review decision
    can make derived civic information public; later corrections create a new
    revision rather than erasing history.
