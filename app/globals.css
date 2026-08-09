@@ -1408,7 +1408,8 @@ body {
 .stage-hud-top span { letter-spacing: .04em; text-transform: none; }
 .stage-hud-top span i { background: var(--coral); box-shadow: none; }
 .stage-hud-top small { color: var(--muted); letter-spacing: .04em; text-transform: none; }
-.terrain-island::before { background: radial-gradient(ellipse, rgba(255,255,255,.44), rgba(255,255,255,0) 67%); }
+.terrain-island::before { background: radial-gradient(ellipse, rgba(255,255,255,.22), rgba(255,255,255,0) 67%); }
+.terrain-canvas { filter: drop-shadow(0 22px 18px rgba(23,63,61,.22)); }
 .terrain-data-chip {
   background: var(--sun);
   border: 2px solid var(--ink);

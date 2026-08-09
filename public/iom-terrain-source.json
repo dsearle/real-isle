@@ -1,0 +1,18 @@
+{
+  "dataset": "Mapzen Terrain Tiles",
+  "encoding": "Terrarium",
+  "registry": "https://registry.opendata.aws/terrain-tiles/",
+  "tileTemplate": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+  "zoom": 11,
+  "bounds": {
+    "west": -4.84,
+    "east": -4.28,
+    "north": 54.43,
+    "south": 54.02
+  },
+  "generatedAt": "2026-08-09T17:31:37.838Z",
+  "output": {
+    "width": 816,
+    "height": 1021
+  }
+}
