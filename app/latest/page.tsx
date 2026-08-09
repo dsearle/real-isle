@@ -2,13 +2,15 @@ import type { Metadata } from "next";
 import { Footer } from "../components/Footer";
 import { Header } from "../components/Header";
 import { updates } from "../lib/data";
+import { getEvidenceDashboardSafe } from "../lib/evidence/status";
 
 export const metadata: Metadata = {
   title: "Election desk",
   description: "Reviewed election updates with direct links to the original sources.",
 };
 
-export default function LatestPage() {
+export default async function LatestPage() {
+  const dashboard = await getEvidenceDashboardSafe();
   return (
     <main>
       <Header />
@@ -21,16 +23,22 @@ export default function LatestPage() {
       </section>
       <section className="section shell desk-page-layout">
         <div className="desk-filter">
-          <span className="status-live"><i aria-hidden="true" /> Monitor active</span>
+          <span className="status-live"><i aria-hidden="true" /> {dashboard ? "Monitor active" : "Monitor initialising"}</span>
           <h2>Source coverage</h2>
           <ul>
-            <li><span>Government elections</span><b>Primary</b></li>
-            <li><span>Manx Radio</span><b>Active</b></li>
-            <li><span>BBC Isle of Man</span><b>Queued</b></li>
-            <li><span>Isle of Man Today</span><b>Queued</b></li>
-            <li><span>Candidate channels</span><b>Manual review</b></li>
+            {(dashboard?.sources ?? []).slice(0, 5).map((source) => (
+              <li key={source.id}>
+                <span>{source.name}</span>
+                <b>{source.last_success_at ? "Checked" : "Queued"}</b>
+              </li>
+            ))}
+            {!dashboard ? <li><span>Evidence store</span><b>Preparing</b></li> : null}
           </ul>
-          <p>Prototype coverage state. Automated ingestion is the next build stage.</p>
+          <p>
+            {dashboard
+              ? `${dashboard.counts.sourceItems} records captured. Automated material stays private until it is reviewed.`
+              : "The maintained source registry will appear after its first pull."}
+          </p>
         </div>
         <div className="desk-feed">
           {updates.map((update, index) => (

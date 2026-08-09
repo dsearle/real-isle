@@ -1,8 +1,9 @@
 /** Cloudflare Worker entry point for the Real Isle preview runtime. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { runDueIngestion } from "../app/lib/evidence/ingest";
 
-interface Env {
+interface Env extends Cloudflare.Env {
   ASSETS: Fetcher;
   IMAGES: {
     input(stream: ReadableStream): {
@@ -24,6 +25,8 @@ interface ExecutionContext {
 // dangerouslyAllowSVG: true in next.config.js and uncomment below:
 // const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
 
+let nextEvidenceProbeAt = 0;
+
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -37,6 +40,21 @@ const worker = {
           return result.response();
         },
       }, allowedWidths);
+    }
+
+    if (
+      request.method === "GET" &&
+      env.DB &&
+      env.SNAPSHOTS &&
+      Date.now() >= nextEvidenceProbeAt &&
+      !url.pathname.startsWith("/_vinext/")
+    ) {
+      nextEvidenceProbeAt = Date.now() + 60_000;
+      ctx.waitUntil(
+        runDueIngestion({ DB: env.DB, INGESTION_SECRET: env.INGESTION_SECRET, SNAPSHOTS: env.SNAPSHOTS })
+          .then(() => undefined)
+          .catch((error) => console.error("Real Isle evidence monitor failed", error)),
+      );
     }
 
     return handler.fetch(request, env, ctx);

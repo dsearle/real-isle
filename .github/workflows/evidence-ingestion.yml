@@ -1,0 +1,49 @@
+name: Evidence ingestion
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-isle-evidence-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      INGEST_URL: ${{ secrets.REAL_ISLE_INGEST_URL }}
+      INGESTION_SECRET: ${{ secrets.REAL_ISLE_INGESTION_SECRET }}
+      SITES_BYPASS: ${{ secrets.REAL_ISLE_SITES_BYPASS_TOKEN }}
+    steps:
+      - name: Run due evidence ingestion
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${INGEST_URL}" || -z "${INGESTION_SECRET}" || -z "${SITES_BYPASS}" ]]; then
+            echo "::notice::Evidence ingestion is dormant. Configure REAL_ISLE_INGEST_URL, REAL_ISLE_INGESTION_SECRET and REAL_ISLE_SITES_BYPASS_TOKEN to activate it."
+            exit 0
+          fi
+
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --connect-timeout 10 \
+            --max-time 120 \
+            --retry 2 \
+            --retry-all-errors \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "OAI-Sites-Authorization: Bearer ${SITES_BYPASS}" \
+            --header "Authorization: Bearer ${INGESTION_SECRET}" \
+            --header "Idempotency-Key: github:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}" \
+            --header "X-Real-Isle-Trigger: scheduler" \
+            --data '{"limit":6}' \
+            "${INGEST_URL}"
