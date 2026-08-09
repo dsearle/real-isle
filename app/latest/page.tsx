@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Footer } from "../components/Footer";
 import { Header } from "../components/Header";
-import { updates } from "../lib/data";
+import { PrioritisedNewsFeed } from "../components/PrioritisedNewsFeed";
+import { constituencies, updates } from "../lib/data";
 import { getEvidenceDashboardSafe } from "../lib/evidence/status";
 
 export const metadata: Metadata = {
@@ -40,23 +41,7 @@ export default async function LatestPage() {
               : "The maintained source registry will appear after its first pull."}
           </p>
         </div>
-        <div className="desk-feed">
-          {updates.map((update, index) => (
-            <article key={update.title}>
-              <div className="feed-index">0{index + 1}</div>
-              <div>
-                <div className="feed-meta">
-                  <span>{update.date} 2026</span>
-                  <span>{update.source}</span>
-                  <span className={`evidence-pill ${update.stateClass}`}>{update.state}</span>
-                </div>
-                <h2>{update.title}</h2>
-                <p>{update.summary}</p>
-                <a href={update.url} target="_blank" rel="noreferrer">Open original source ↗</a>
-              </div>
-            </article>
-          ))}
-        </div>
+        <PrioritisedNewsFeed constituencies={constituencies} updates={updates} />
       </section>
       <Footer />
     </main>

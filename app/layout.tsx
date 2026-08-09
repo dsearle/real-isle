@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CivicPreferencesProvider } from "./components/CivicPreferences";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
     siteName: "The People’s Isle",
     images: [
       {
-        url: "/og-peoples-isle.png",
+        url: "/og-dual-view.png",
         width: 1536,
         height: 1024,
         alt: "The People’s Isle — Your Isle, Your Future",
@@ -29,14 +30,16 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "The People’s Isle — Your Isle, Your Future",
     description: "Independent, source-linked intelligence for the 2026 House of Keys election.",
-    images: ["/og-peoples-isle.png"],
+    images: ["/og-dual-view.png"],
   },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <CivicPreferencesProvider>{children}</CivicPreferencesProvider>
+      </body>
     </html>
   );
 }

@@ -18,6 +18,20 @@ export type Candidate = {
   positions: Record<string, { label: string; detail: string; state: "found" | "partial" | "missing" }>;
 };
 
+export type ElectionUpdate = {
+  date: string;
+  dateQualifier: "Checked" | "Published" | "Reviewed";
+  sortDate: string;
+  source: string;
+  state: string;
+  stateClass: string;
+  title: string;
+  summary: string;
+  url: string;
+  constituencyIds: readonly string[];
+  candidateSlugs: readonly string[];
+};
+
 export const constituencies = [
   { id: "ayre-michael", name: "Ayre and Michael", short: "A&M", x: 45, y: 8, declared: "7 declared", candidates: ["tim-johnston", "steve-curphey"] },
   { id: "ramsey", name: "Ramsey", short: "RAM", x: 68, y: 17, declared: "Monitoring", candidates: [] },
@@ -138,44 +152,60 @@ export const candidates: Candidate[] = [
   },
 ];
 
-export const updates = [
+export const updates: readonly ElectionUpdate[] = [
   {
     date: "09 Aug",
+    dateQualifier: "Checked",
+    sortDate: "2026-08-09",
     source: "Government",
     state: "Primary source",
     stateClass: "state-primary",
     title: "The distinction that matters: declared is not nominated",
     summary: "The formal nomination period closes at 1pm on 26 August. Until then, profiles carry prospective-candidate status.",
     url: "https://elections.gov.im/house-of-keys-general-election-2026/",
+    constituencyIds: [],
+    candidateSlugs: [],
   },
   {
     date: "20 Jul",
+    dateQualifier: "Published",
+    sortDate: "2026-07-20",
     source: "Manx Radio",
     state: "Reviewed report",
     stateClass: "state-reviewed",
     title: "Ayre and Michael field reaches seven declared candidates",
     summary: "Steve Curphey joined six previously declared prospective candidates in the constituency.",
     url: "https://www.manxradio.com/news/isle-of-man-news/seventh-candidate-to-stand-for-election-in-ayre-and-michael/",
+    constituencyIds: ["ayre-michael"],
+    candidateSlugs: ["steve-curphey"],
   },
   {
     date: "09 Jul",
+    dateQualifier: "Published",
+    sortDate: "2026-07-09",
     source: "Manx Radio",
     state: "Reviewed report",
     stateClass: "state-reviewed",
     title: "Tim Johnston confirms re-election bid",
     summary: "The sitting MHK named the economy, cost of living and Island self-sufficiency as priorities.",
     url: "https://www.manxradio.com/news/isle-of-man-news/first-sitting-ayre-and-michael-mhk-announces-re-election-bid/",
+    constituencyIds: ["ayre-michael"],
+    candidateSlugs: ["tim-johnston"],
   },
   {
     date: "09 Aug",
+    dateQualifier: "Reviewed",
+    sortDate: "2026-08-09",
     source: "Manx Radio",
     state: "Profile reviewed",
     stateClass: "state-profile",
     title: "Douglas South profile records Claire Christian's priorities",
     summary: "Health and social care, public finances and public-service performance are among the stated priorities.",
     url: "https://www.manxradio.com/election-2026/election-candidates/claire-christian/",
+    constituencyIds: ["douglas-south"],
+    candidateSlugs: ["claire-christian"],
   },
-] as const;
+];
 
 export function getCandidate(slug: string) {
   return candidates.find((candidate) => candidate.slug === slug);

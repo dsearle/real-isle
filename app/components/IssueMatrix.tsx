@@ -1,4 +1,8 @@
-import { candidates } from "../lib/data";
+"use client";
+
+import { candidates, constituencies } from "../lib/data";
+import { useCivicPreferences } from "./CivicPreferences";
+import styles from "./IssueMatrix.module.css";
 
 const issues = [
   { id: "manxcare", label: "Manx Care", question: "How should health delivery and accountability change?" },
@@ -7,10 +11,27 @@ const issues = [
 ] as const;
 
 export function IssueMatrix() {
-  const compared = candidates.slice(0, 4);
+  const { selectedConstituencyId } = useCivicPreferences();
+  const selected = constituencies.find(
+    (constituency) => constituency.id === selectedConstituencyId,
+  );
+  const selectedCandidates = candidates
+    .filter((candidate) => candidate.constituency === selected?.name)
+    .toSorted((left, right) => left.name.localeCompare(right.name, "en-GB"));
+  const otherCandidates = candidates
+    .filter((candidate) => candidate.constituency !== selected?.name)
+    .toSorted((left, right) => left.name.localeCompare(right.name, "en-GB"));
+  const compared = [...selectedCandidates, ...otherCandidates].slice(0, 4);
 
   return (
     <div className="matrix-wrap">
+      <p className={styles.context} aria-live="polite">
+        {selected
+          ? selectedCandidates.length
+            ? `Candidates for ${selected.name} are grouped first. Each group remains alphabetical.`
+            : `No reviewed candidate profile for ${selected.name} yet. Showing other reviewed profiles alphabetically.`
+          : "Choose an area above to prioritise its reviewed candidates in this comparison."}
+      </p>
       <div className="matrix-scroll" role="region" aria-label="Scrollable candidate issue comparison">
         <table className="issue-matrix">
           <thead>
@@ -20,6 +41,7 @@ export function IssueMatrix() {
                 <th scope="col" key={candidate.slug}>
                   <span>{candidate.initials}</span>
                   {candidate.name}
+                  <small className={styles.candidateConstituency}>{candidate.constituency}</small>
                 </th>
               ))}
             </tr>

@@ -22,12 +22,14 @@ test("server-renders The People’s Isle election hub", async () => {
   assert.match(html, /<title>The People’s Isle/);
   assert.match(html, /Your Isle/);
   assert.match(html, /Your Future/);
-  assert.match(html, /People standing near you/);
+  assert.match(html, /Living Atlas/);
+  assert.match(html, /Election Desk/);
+  assert.match(html, /Choose a constituency/);
+  assert.match(html, /No account, address or postcode is requested/);
   assert.match(html, /Interactive 3D terrain model of the Isle of Man/);
   assert.match(html, /high-resolution elevation data/);
   assert.match(html, /relief shown at 5×/);
   assert.match(html, /OUR ACTUAL ISLAND/);
-  assert.match(html, /href="\/candidates\/claire-christian"/);
   assert.match(html, /12/);
   assert.match(html, /constituencies/i);
   assert.match(html, /Vote compass/i);

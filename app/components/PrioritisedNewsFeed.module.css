@@ -1,0 +1,102 @@
+.feed {
+  display: grid;
+  gap: 28px;
+}
+
+:global(.desk-feed).feed article {
+  grid-template-columns: 1fr;
+}
+
+.contextBar {
+  align-items: center;
+  background: #fffdf7;
+  border: 1px solid rgba(18, 50, 56, 0.18);
+  border-radius: 18px;
+  display: flex;
+  justify-content: space-between;
+  padding: 15px 17px;
+}
+
+.contextBar div {
+  display: grid;
+  gap: 3px;
+}
+
+.contextBar span,
+.groupHeading span {
+  color: #0d6970;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.contextBar strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+}
+
+.contextBar button,
+.contextBar a {
+  background: #123238;
+  border: 0;
+  border-radius: 999px;
+  color: #fffdf7;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 9px 13px;
+}
+
+.group {
+  display: grid;
+}
+
+.groupHeading {
+  align-items: baseline;
+  border-bottom: 1px solid rgba(18, 50, 56, 0.18);
+  display: flex;
+  justify-content: space-between;
+  padding: 0 0 10px;
+}
+
+.groupHeading small {
+  color: #627578;
+  font-size: 11px;
+}
+
+.emptyState {
+  background: #fffdf7;
+  border: 1px dashed rgba(18, 50, 56, 0.28);
+  border-radius: 18px;
+  margin-top: 16px;
+  padding: 24px;
+}
+
+.emptyState strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+}
+
+.emptyState p {
+  color: #627578;
+  line-height: 1.6;
+  margin: 7px 0 0;
+}
+
+@media (max-width: 560px) {
+  .contextBar {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .contextBar strong {
+    font-size: 15px;
+  }
+
+  .groupHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}

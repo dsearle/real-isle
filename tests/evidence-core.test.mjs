@@ -8,6 +8,7 @@ import {
 } from "../app/lib/evidence/candidate-html.ts";
 import { parseFeed } from "../app/lib/evidence/feed.ts";
 import { sha256Hex, stableJson } from "../app/lib/evidence/integrity.ts";
+import { candidates, updates } from "../app/lib/data.ts";
 
 test("candidate directory cards retain constituency and portrait provenance", () => {
   const entries = parseCandidateDirectory(
@@ -170,4 +171,27 @@ test("audit JSON has fixed key ordering and a stable digest", async () => {
     "0002c454dbe710b7f7a95a7a91f68983ea8b50f1a45ec539e6e76fd2d9ccc9dc",
   );
   assert.throws(() => stableJson({ invalid: undefined }), /finite JSON values/);
+});
+
+test("constituency interest uses explicit candidate and update associations", () => {
+  const ayreUpdates = updates.filter((update) => update.constituencyIds.includes("ayre-michael"));
+  const onchanUpdates = updates.filter((update) => update.constituencyIds.includes("onchan"));
+  const islandWideUpdates = updates.filter((update) => update.constituencyIds.length === 0);
+  const onchanCandidates = candidates
+    .filter((candidate) => candidate.constituency === "Onchan")
+    .map((candidate) => candidate.name)
+    .sort();
+
+  assert.equal(ayreUpdates.length, 2);
+  assert.equal(onchanUpdates.length, 0);
+  assert.equal(islandWideUpdates.length, 1);
+  assert.deepEqual(onchanCandidates, ["Rachel Glover", "Rob Callister"]);
+  assert.deepEqual(
+    updates.toSorted((left, right) => right.sortDate.localeCompare(left.sortDate)).map(
+      (update) => update.sortDate,
+    ),
+    ["2026-08-09", "2026-08-09", "2026-07-20", "2026-07-09"],
+  );
+  assert.equal(updates[0].dateQualifier, "Checked");
+  assert.equal(updates[3].dateQualifier, "Reviewed");
 });

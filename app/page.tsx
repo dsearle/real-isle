@@ -1,67 +1,34 @@
-import { ConstituencyExplorer } from "./components/ConstituencyExplorer";
-import { EvidenceCard } from "./components/EvidenceCard";
 import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
-import { HeroIsland } from "./components/HeroIsland";
+import { HomeViewExperience } from "./components/HomeViewExperience";
 import { IssueMatrix } from "./components/IssueMatrix";
-import { candidates, updates } from "./lib/data";
+import { candidates, constituencies, updates } from "./lib/data";
 
 export default function Home() {
-  const featuredCandidates = candidates.slice(0, 4);
-  const heroCandidates = candidates.slice(0, 5).map((candidate) => ({
-    slug: candidate.slug,
-    name: candidate.name,
-    initials: candidate.initials,
-    constituency: candidate.constituency,
-    priority: candidate.priorities[0],
-    evidenceCount: candidate.evidenceCount,
-  }));
+  const homeCandidates = candidates.flatMap((candidate) => {
+    const constituency = constituencies.find((item) => item.name === candidate.constituency);
+    if (!constituency) return [];
+    return [{
+      constituencyId: constituency.id,
+      evidenceCount: candidate.evidenceCount,
+      initials: candidate.initials,
+      name: candidate.name,
+      priorities: candidate.priorities,
+      slug: candidate.slug,
+      status: candidate.status,
+      summary: candidate.summary,
+    }];
+  });
 
   return (
     <main>
       <Header />
 
-      <section className="hero hero-v2">
-        <div className="hero-atmosphere" aria-hidden="true">
-          <i /><i /><i />
-        </div>
-        <div className="shell hero-grid hero-grid-v2">
-          <div className="hero-copy">
-            <p className="eyebrow">A clearer way to choose</p>
-            <h1>
-              Your Isle,<br />
-              <em>Your Future</em>
-            </h1>
-            <p className="hero-intro">
-              Move through the Island, meet the people standing in your area,
-              and trace every position back to what was actually said.
-            </p>
-            <div className="hero-actions">
-              <a className="button button-primary" href="#constituencies">
-                Find your constituency
-              </a>
-              <a className="button button-quiet" href="/compass">
-                Try the private compass <span aria-hidden="true">→</span>
-              </a>
-            </div>
-            <div className="hero-meta hero-meta-v2" aria-label="The People’s Isle evidence coverage">
-              <div>
-                <strong>12</strong>
-                <span>areas mapped</span>
-              </div>
-              <div>
-                <strong>6</strong>
-                <span>profiles reviewed</span>
-              </div>
-              <div>
-                <strong>100%</strong>
-                <span>claims linked</span>
-              </div>
-            </div>
-          </div>
-          <HeroIsland candidates={heroCandidates} />
-        </div>
-      </section>
+      <HomeViewExperience
+        candidates={homeCandidates}
+        constituencies={constituencies}
+        updates={updates}
+      />
 
       <section className="ticker" aria-label="Important election dates">
         <div className="shell ticker-track">
@@ -73,45 +40,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section shell" id="constituencies">
-        <div className="section-heading split-heading">
-          <div>
-            <p className="eyebrow eyebrow-dark">Explore the election</p>
-            <h2>Your Island, constituency by constituency.</h2>
-          </div>
-          <p>
-            Choose an area to see declared candidates and the strength of the
-            evidence currently held for each profile.
-          </p>
-        </div>
-        <ConstituencyExplorer />
-      </section>
-
-      <section className="section section-ink" id="candidates">
-        <div className="shell">
-          <div className="section-heading section-heading-light split-heading">
-            <div>
-              <p className="eyebrow">Evidence-led profiles</p>
-              <h2>Start with the claim. End at the source.</h2>
-            </div>
-            <p>
-              These prospective-candidate records are a live editorial preview,
-              not the final notice of poll.
-            </p>
-          </div>
-          <div className="candidate-grid">
-            {featuredCandidates.map((candidate) => (
-              <EvidenceCard key={candidate.slug} candidate={candidate} />
-            ))}
-          </div>
-          <div className="section-cta">
-            <a className="text-link text-link-light" href="#constituencies">
-              Browse all monitored constituencies <span aria-hidden="true">→</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
       <section className="section shell" id="issues">
         <div className="section-heading split-heading">
           <div>
@@ -120,46 +48,10 @@ export default function Home() {
           </div>
           <p>
             “Not found” is a meaningful result. The People’s Isle does not infer a
-            position from party, biography, likes, or silence.
+            position from party, biography, likes or silence.
           </p>
         </div>
         <IssueMatrix />
-      </section>
-
-      <section className="section section-sand" id="latest">
-        <div className="shell latest-layout">
-          <div className="latest-heading">
-            <p className="eyebrow eyebrow-dark">Latest evidence</p>
-            <h2>The campaign, with the noise turned down.</h2>
-            <p>
-              A monitored stream becomes public only after its source,
-              candidate, constituency and claims have been checked.
-            </p>
-            <a className="button button-ink" href="/latest">
-              Open the election desk
-            </a>
-          </div>
-          <div className="update-list">
-            {updates.slice(0, 3).map((update) => (
-              <article className="update-row" key={update.title}>
-                <div className="update-time">
-                  <strong>{update.date}</strong>
-                  <span>{update.source}</span>
-                </div>
-                <div>
-                  <span className={`evidence-pill ${update.stateClass}`}>
-                    {update.state}
-                  </span>
-                  <h3>{update.title}</h3>
-                  <p>{update.summary}</p>
-                  <a href={update.url} target="_blank" rel="noreferrer">
-                    Read original source <span aria-hidden="true">↗</span>
-                  </a>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
       </section>
 
       <section className="section shell trust-section">
