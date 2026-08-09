@@ -1022,7 +1022,7 @@ a {
   flex-direction: column;
   gap: 3px;
   left: 50%;
-  pointer-events: none;
+  pointer-events: auto;
   position: absolute;
   transform: translateX(-50%);
   z-index: 3;
@@ -1419,6 +1419,7 @@ body {
 }
 .terrain-data-chip strong { color: var(--ink); letter-spacing: .05em; }
 .terrain-data-chip span { color: rgba(23,63,61,.67); }
+.terrain-data-chip a { color: var(--ink); font-size: 6px; font-weight: 750; text-decoration: underline; }
 .terrain-status { color: var(--ink); }
 .floating-candidate {
   backdrop-filter: none;

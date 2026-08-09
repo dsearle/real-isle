@@ -251,9 +251,12 @@ export function IslandTerrain() {
       />
       {state === "loading" ? <span className="terrain-status">Building real terrain…</span> : null}
       {state === "error" ? <span className="terrain-status terrain-error">Terrain unavailable</span> : null}
-      <div className="terrain-data-chip" aria-hidden="true">
+      <div className="terrain-data-chip">
         <strong>OUR ACTUAL ISLAND</strong>
         <span>Give it a spin · Snaefell 621m</span>
+        <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noreferrer">
+          Elevation: Mapzen / AWS Open Data ↗
+        </a>
       </div>
     </div>
   );
