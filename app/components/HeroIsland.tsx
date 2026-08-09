@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useRef, useState } from "react";
+import { IslandTerrain } from "./IslandTerrain";
 
 export type HeroCandidate = {
   slug: string;
@@ -46,33 +46,15 @@ export function HeroIsland({ candidates }: { candidates: HeroCandidate[] }) {
       ref={stageRef}
     >
       <div className="stage-hud stage-hud-top">
-        <span><i aria-hidden="true" /> Live candidate network</span>
-        <small>Move to explore</small>
+        <span><i aria-hidden="true" /> People standing near you</span>
+        <small>Pick a card</small>
       </div>
 
-      <div className="island-scene" aria-hidden="true">
-        <div className="orbit-line orbit-line-one" />
-        <div className="orbit-line orbit-line-two" />
-        <div className="orbit-line orbit-line-three" />
-        <div className="island-platform">
-          <div className="island-depth island-depth-three" />
-          <div className="island-depth island-depth-two" />
-          <div className="island-depth island-depth-one" />
-          <div className="island-surface">
-            <i className="terrain-line terrain-line-one" />
-            <i className="terrain-line terrain-line-two" />
-            <i className="terrain-line terrain-line-three" />
-            <i className="terrain-glow" />
-          </div>
-        </div>
-        <span className="island-ping ping-one" />
-        <span className="island-ping ping-two" />
-        <span className="island-ping ping-three" />
-      </div>
+      <IslandTerrain />
 
       <div className="floating-candidates" aria-label="Featured candidate profiles">
         {candidates.map((candidate, index) => (
-          <Link
+          <a
             aria-label={`Open ${candidate.name}'s full candidate profile`}
             className={`floating-candidate floating-candidate-${index + 1} ${candidate.slug === active.slug ? "is-active" : ""}`}
             href={`/candidates/${candidate.slug}`}
@@ -86,23 +68,23 @@ export function HeroIsland({ candidates }: { candidates: HeroCandidate[] }) {
               <small>{candidate.constituency}</small>
             </span>
             <i className="floating-signal" aria-hidden="true" />
-          </Link>
+          </a>
         ))}
       </div>
 
       {active ? (
         <div className="stage-hud stage-hud-bottom" aria-live="polite">
           <div>
-            <span>Focus profile</span>
+            <span>Meet</span>
             <strong>{active.name}</strong>
           </div>
           <div className="stage-priority">
-            <span>Stated priority</span>
+            <span>On their list</span>
             <strong>{active.priority}</strong>
           </div>
-          <Link href={`/candidates/${active.slug}`} aria-label={`Open ${active.name}'s evidence profile`}>
-            {active.evidenceCount} source{active.evidenceCount === 1 ? "" : "s"} <b aria-hidden="true">↗</b>
-          </Link>
+          <a href={`/candidates/${active.slug}`} aria-label={`Open ${active.name}'s evidence profile`}>
+            Full profile <b aria-hidden="true">↗</b>
+          </a>
         </div>
       ) : null}
     </div>

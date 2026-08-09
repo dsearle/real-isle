@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ConstituencyExplorer } from "./components/ConstituencyExplorer";
 import { EvidenceCard } from "./components/EvidenceCard";
 import { Footer } from "./components/Footer";
@@ -28,7 +27,7 @@ export default function Home() {
         </div>
         <div className="shell hero-grid hero-grid-v2">
           <div className="hero-copy">
-            <p className="eyebrow">The public record, made navigable</p>
+            <p className="eyebrow">A clearer way to choose</p>
             <h1>
               Your Isle,<br />
               <em>Your Future</em>
@@ -41,9 +40,9 @@ export default function Home() {
               <a className="button button-primary" href="#constituencies">
                 Find your constituency
               </a>
-              <Link className="button button-quiet" href="/compass">
+              <a className="button button-quiet" href="/compass">
                 Try the private compass <span aria-hidden="true">→</span>
-              </Link>
+              </a>
             </div>
             <div className="hero-meta hero-meta-v2" aria-label="Real Isle evidence coverage">
               <div>
@@ -66,7 +65,7 @@ export default function Home() {
 
       <section className="ticker" aria-label="Important election dates">
         <div className="shell ticker-track">
-          <span className="ticker-label"><i aria-hidden="true" /> Election intelligence</span>
+          <span className="ticker-label"><i aria-hidden="true" /> Election countdown</span>
           <span><b>13 Aug</b> Keys dissolved</span>
           <span><b>25 Aug</b> Voter registration deadline</span>
           <span><b>26 Aug</b> Nominations close</span>
@@ -136,9 +135,9 @@ export default function Home() {
               A monitored stream becomes public only after its source,
               candidate, constituency and claims have been checked.
             </p>
-            <Link className="button button-ink" href="/latest">
+            <a className="button button-ink" href="/latest">
               Open the election desk
-            </Link>
+            </a>
           </div>
           <div className="update-list">
             {updates.slice(0, 3).map((update) => (
@@ -202,9 +201,9 @@ export default function Home() {
               Work through five defining Island questions. Your answers remain
               on this device and can be cleared instantly.
             </p>
-            <Link className="button button-coral" href="/compass">
+            <a className="button button-coral" href="/compass">
               Start the compass <span aria-hidden="true">→</span>
-            </Link>
+            </a>
           </div>
         </div>
       </section>

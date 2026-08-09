@@ -1,5 +1,5 @@
+/* eslint-disable @next/next/no-html-link-for-pages -- Vinext's deployed client router currently throws on navigation; document links are intentional. */
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Footer } from "../../components/Footer";
 import { Header } from "../../components/Header";
@@ -29,7 +29,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
       <Header />
       <section className="profile-hero">
         <div className="shell profile-breadcrumb">
-          <Link href="/#constituencies">All constituencies</Link>
+          <a href="/#constituencies">All constituencies</a>
           <span aria-hidden="true">/</span>
           <span>{candidate.constituency}</span>
         </div>

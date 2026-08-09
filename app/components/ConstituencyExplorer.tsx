@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { candidates, constituencies } from "../lib/data";
 
@@ -52,14 +51,14 @@ export function ConstituencyExplorer() {
         {selectedCandidates.length ? (
           <div className="mini-candidates">
             {selectedCandidates.map((candidate) => (
-              <Link className="mini-candidate" href={`/candidates/${candidate.slug}`} key={candidate.slug}>
+              <a className="mini-candidate" href={`/candidates/${candidate.slug}`} key={candidate.slug}>
                 <span>{candidate.initials}</span>
                 <div>
                   <strong>{candidate.name}</strong>
                   <small>{candidate.status} · {candidate.evidenceCount} source reviewed</small>
                 </div>
                 <i aria-hidden="true">→</i>
-              </Link>
+              </a>
             ))}
           </div>
         ) : (

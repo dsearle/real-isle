@@ -1,26 +1,25 @@
-import Link from "next/link";
-
+/* eslint-disable @next/next/no-html-link-for-pages -- Vinext's deployed client router currently throws on navigation; document links are intentional. */
 export function Header() {
   return (
     <header className="site-header">
       <div className="shell header-inner">
-        <Link className="brand" href="/" aria-label="Real Isle home">
+        <a className="brand" href="/" aria-label="Real Isle home">
           <span className="brand-mark" aria-hidden="true">
             <i />
             <i />
             <i />
           </span>
           <span>Real Isle</span>
-        </Link>
+        </a>
         <nav className="main-nav" aria-label="Main navigation">
-          <Link href="/#constituencies">Constituencies</Link>
-          <Link href="/#issues">Issues</Link>
-          <Link href="/latest">Latest</Link>
-          <Link className="nav-compass" href="/compass">Vote compass</Link>
+          <a href="/#constituencies">Constituencies</a>
+          <a href="/#issues">Issues</a>
+          <a href="/latest">Latest</a>
+          <a className="nav-compass" href="/compass">Vote compass</a>
         </nav>
-        <Link className="review-link" href="/admin/review">
+        <a className="review-link" href="/admin/review">
           Founder review
-        </Link>
+        </a>
       </div>
     </header>
   );

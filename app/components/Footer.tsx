@@ -1,22 +1,21 @@
-import Link from "next/link";
-
+/* eslint-disable @next/next/no-html-link-for-pages -- Vinext's deployed client router currently throws on navigation; document links are intentional. */
 export function Footer() {
   return (
     <footer className="site-footer">
       <div className="shell footer-grid">
         <div>
-          <Link className="brand brand-footer" href="/">
+          <a className="brand brand-footer" href="/">
             <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
             <span>Real Isle</span>
-          </Link>
+          </a>
           <p>Independent civic intelligence for the Isle of Man.</p>
         </div>
         <div>
           <h2>Explore</h2>
-          <Link href="/#constituencies">Constituencies</Link>
-          <Link href="/#issues">Big issues</Link>
-          <Link href="/latest">Election desk</Link>
-          <Link href="/compass">Vote compass</Link>
+          <a href="/#constituencies">Constituencies</a>
+          <a href="/#issues">Big issues</a>
+          <a href="/latest">Election desk</a>
+          <a href="/compass">Vote compass</a>
         </div>
         <div>
           <h2>Trust</h2>

@@ -1,9 +1,8 @@
-import Link from "next/link";
 import type { Candidate } from "../lib/data";
 
 export function EvidenceCard({ candidate }: { candidate: Candidate }) {
   return (
-    <Link
+    <a
       aria-label={`Open ${candidate.name}'s full candidate profile`}
       className="candidate-card candidate-dossier"
       href={`/candidates/${candidate.slug}`}
@@ -33,6 +32,6 @@ export function EvidenceCard({ candidate }: { candidate: Candidate }) {
           </span>
         </div>
       </div>
-    </Link>
+    </a>
   );
 }
