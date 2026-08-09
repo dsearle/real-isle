@@ -30,8 +30,8 @@ export default function Home() {
           <div className="hero-copy">
             <p className="eyebrow">The public record, made navigable</p>
             <h1>
-              Know who wants<br />
-              <em>your vote.</em>
+              Your Isle,<br />
+              <em>Your Future</em>
             </h1>
             <p className="hero-intro">
               Move through the Island, meet the people standing in your area,

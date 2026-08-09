@@ -20,7 +20,8 @@ test("server-renders the Real Isle election hub", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Real Isle/);
-  assert.match(html, /Know who wants/);
+  assert.match(html, /Your Isle/);
+  assert.match(html, /Your Future/);
   assert.match(html, /Live candidate network/);
   assert.match(html, /12/);
   assert.match(html, /constituencies/i);

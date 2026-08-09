@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   description:
     "An independent, evidence-led guide to Isle of Man constituencies, candidates, issues and election reporting.",
   openGraph: {
-    title: "Real Isle — Know who wants your vote",
+    title: "Real Isle — Your Isle, Your Future",
     description:
       "Explore every constituency, compare candidate positions and follow the original sources behind the 2026 House of Keys election.",
     type: "website",
@@ -18,18 +18,18 @@ export const metadata: Metadata = {
     siteName: "Real Isle",
     images: [
       {
-        url: "/og-v2.png",
+        url: "/og-v3.png",
         width: 1536,
         height: 1024,
-        alt: "Real Isle — Know who wants your vote.",
+        alt: "Real Isle — Your Isle, Your Future",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Real Isle — Know who wants your vote",
+    title: "Real Isle — Your Isle, Your Future",
     description: "Independent, source-linked intelligence for the 2026 House of Keys election.",
-    images: ["/og-v2.png"],
+    images: ["/og-v3.png"],
   },
 };
 
