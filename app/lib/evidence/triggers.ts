@@ -38,6 +38,12 @@ const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS source_item_versions_no_delete
    BEFORE DELETE ON source_item_versions
    BEGIN SELECT RAISE(ABORT, 'source item versions are immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS candidate_profile_observations_no_update
+   BEFORE UPDATE ON candidate_profile_observations
+   BEGIN SELECT RAISE(ABORT, 'candidate profile observations are immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS candidate_profile_observations_no_delete
+   BEFORE DELETE ON candidate_profile_observations
+   BEGIN SELECT RAISE(ABORT, 'candidate profile observations are immutable'); END`,
   `CREATE TRIGGER IF NOT EXISTS revisions_no_update
    BEFORE UPDATE ON revisions
    BEGIN SELECT RAISE(ABORT, 'revisions are immutable'); END`,

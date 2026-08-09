@@ -18,10 +18,13 @@ The first reviewable product slice includes:
 - a Manx Care, offshore-wind and housing comparison matrix;
 - a reviewed election-news desk;
 - a browser-only vote-compass methodology preview; and
-- a founder evidence-review workspace; and
+- a founder evidence-review workspace;
 - a maintained evidence ledger that monitors approved news, audio, video and
   parliamentary feeds while keeping newly discovered material private until
-  editorial review.
+  editorial review; and
+- a self-updating candidate registry that discovers profile text, public links,
+  manifestos, transcripts and portrait references without publishing unreviewed
+  data or copying rights-uncleared images.
 
 Structured civic records, source observations and review state are stored in
 Cloudflare D1. Content-addressed source captures are retained privately in R2,

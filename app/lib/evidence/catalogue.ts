@@ -3,11 +3,11 @@ import { candidates, constituencies } from "../data";
 export type MonitoredSource = {
   active: boolean;
   allowedHosts: readonly string[];
-  feedType: "rss" | "atom" | "youtube";
+  feedType: "rss" | "atom" | "youtube" | "candidate-directory";
   feedUrl: string;
   homepageUrl: string;
   id: string;
-  itemType: "audio" | "news" | "official" | "video";
+  itemType: "audio" | "candidate-profile" | "news" | "official" | "video";
   name: string;
   pollIntervalMinutes: number;
   publisher: string;
@@ -58,6 +58,21 @@ export const monitoredSources: MonitoredSource[] = [
     feedUrl: "https://www.manxradio.com/news/general-election-2026/feed.xml",
     feedType: "rss",
     itemType: "news",
+    sourceTier: 3,
+    active: true,
+    allowedHosts: ["www.manxradio.com", "manxradio.com"],
+    pollIntervalMinutes: 10,
+    rightsState: "restricted-copy",
+    storeFullContent: false,
+  },
+  {
+    id: "manx-radio-candidates",
+    name: "Manx Radio candidate directory",
+    publisher: "Radio Manx Ltd",
+    homepageUrl: "https://www.manxradio.com/election-2026/election-candidates/",
+    feedUrl: "https://www.manxradio.com/election-2026/election-candidates/",
+    feedType: "candidate-directory",
+    itemType: "candidate-profile",
     sourceTier: 3,
     active: true,
     allowedHosts: ["www.manxradio.com", "manxradio.com"],

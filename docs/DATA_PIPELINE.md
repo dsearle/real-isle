@@ -31,6 +31,44 @@ Government YouTube feeds, and Tynwald Hansard. A source should not be activated
 until its machine-readable endpoint, host allowlist and reuse rights have been
 verified.
 
+## Candidate registry and portraits
+
+The Manx Radio 2026 candidate directory is monitored as a structured HTML
+source. Each pull records the live set of prospective candidates, their stated
+constituency, profile URL and directory portrait URL in an immutable candidate
+observation. The directory is not the official nomination register: every new
+candidacy remains `prospective` and `unverified` until an editor can cite an
+official nomination source.
+
+Candidate profile pages are backfilled gradually. The connector observes the
+publisher's eight-second crawl delay through a persisted host-wide request
+lease, so overlapping feed and profile jobs cannot bypass it. The connector
+processes one due profile per run. It
+extracts source text, public contact links, websites and social accounts,
+embedded interview links, transcript/manifesto document references, and body/OG
+portrait variants. These are private research records until reviewed; text is
+not converted into a public position or claim automatically.
+
+Portrait discovery is deliberately metadata-only. For each image the registry
+stores its remote URL, source page, source snapshot, variant, dimensions when
+published, observation time, and a rights state. A public image is not assumed
+to be reusable: the default is `rights_state = unknown`, no image bytes are
+copied to R2, and publication is blocked by a database constraint. A portrait
+can only be published from Real Isle storage after review records either
+candidate permission or a redistributable licence. The initials artwork remains
+the public fallback.
+
+A complete directory observation also reconciles absence. A candidate no
+longer listed by the source is marked source-removed, withheld from current
+counts, and no longer crawled; the historical observations remain intact. A
+later reappearance restores prospective status. Removed profile links and
+documents are withheld, and any source change to an approved profile or child
+record moves it to `needs-update` without rewriting the reviewed fields.
+
+Facebook and other social URLs may be discovered from candidate profile pages.
+The collector does not crawl those platforms; their content requires a separate
+authorised integration and editorial review.
+
 ## Storage and integrity
 
 - **D1 (`DB`)** holds structured civic entities, source metadata, observations,

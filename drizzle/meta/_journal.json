@@ -22,6 +22,20 @@
       "when": 1786299820555,
       "tag": "0002_neat_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786301436024,
+      "tag": "0003_giant_triathlon",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786302740608,
+      "tag": "0004_productive_korg",
+      "breakpoints": true
     }
   ]
 }

@@ -139,6 +139,33 @@ export const sources = sqliteTable(
   ],
 );
 
+export const ingestionHostRateLimits = sqliteTable(
+  "ingestion_host_rate_limits",
+  {
+    host: text("host").primaryKey(),
+    minimumIntervalMs: integer("minimum_interval_ms").notNull().default(0),
+    nextRequestAtMs: integer("next_request_at_ms").notNull().default(0),
+    lastRequestStartedAtMs: integer("last_request_started_at_ms"),
+    leaseToken: text("lease_token"),
+    leaseExpiresAtMs: integer("lease_expires_at_ms"),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    check(
+      "ingestion_host_rate_limits_interval_check",
+      sql`${table.minimumIntervalMs} >= 0`,
+    ),
+    check(
+      "ingestion_host_rate_limits_next_request_check",
+      sql`${table.nextRequestAtMs} >= 0`,
+    ),
+    check(
+      "ingestion_host_rate_limits_lease_pair_check",
+      sql`(${table.leaseToken} IS NULL AND ${table.leaseExpiresAtMs} IS NULL) OR (${table.leaseToken} IS NOT NULL AND ${table.leaseExpiresAtMs} IS NOT NULL)`,
+    ),
+  ],
+);
+
 export const ingestionRuns = sqliteTable(
   "ingestion_runs",
   {
@@ -304,6 +331,237 @@ export const ingestionRunItems = sqliteTable(
     uniqueIndex("idx_ingestion_run_items_run_item").on(table.ingestionRunId, table.sourceItemId),
     index("idx_ingestion_run_items_outcome").on(table.ingestionRunId, table.outcome),
     index("idx_ingestion_run_items_item").on(table.sourceItemId, table.ingestionRunId),
+  ],
+);
+
+export const candidateProfileObservations = sqliteTable(
+  "candidate_profile_observations",
+  {
+    id: text("id").primaryKey(),
+    candidacyId: text("candidacy_id")
+      .notNull()
+      .references(() => candidacies.id),
+    sourceId: text("source_id")
+      .notNull()
+      .references(() => sources.id),
+    sourceItemId: text("source_item_id")
+      .notNull()
+      .references(() => sourceItems.id),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => sourceSnapshots.id),
+    observationType: text("observation_type").notNull(),
+    observedAt: text("observed_at").notNull(),
+    payload: text("payload").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    parserVersion: text("parser_version").notNull(),
+    reviewState: text("review_state").notNull().default("unreviewed"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_candidate_observations_snapshot_type").on(
+      table.candidacyId,
+      table.snapshotId,
+      table.observationType,
+    ),
+    index("idx_candidate_observations_review").on(table.reviewState, table.observedAt),
+    index("idx_candidate_observations_candidate").on(table.candidacyId, table.observedAt),
+    check(
+      "candidate_observations_type_check",
+      sql`${table.observationType} IN ('directory', 'profile')`,
+    ),
+    check(
+      "candidate_observations_review_check",
+      sql`${table.reviewState} IN ('unreviewed', 'approved', 'rejected', 'superseded')`,
+    ),
+  ],
+);
+
+export const candidateProfiles = sqliteTable(
+  "candidate_profiles",
+  {
+    candidacyId: text("candidacy_id")
+      .primaryKey()
+      .references(() => candidacies.id),
+    slug: text("slug").notNull(),
+    profileUrl: text("profile_url").notNull(),
+    profileUrlHash: text("profile_url_hash").notNull(),
+    observedConstituencyId: text("observed_constituency_id")
+      .notNull()
+      .references(() => constituencies.id),
+    currentDirectoryObservationId: text("current_directory_observation_id")
+      .notNull()
+      .references(() => candidateProfileObservations.id),
+    currentProfileObservationId: text("current_profile_observation_id").references(
+      () => candidateProfileObservations.id,
+    ),
+    completenessState: text("completeness_state").notNull().default("directory-only"),
+    reviewState: text("review_state").notNull().default("unreviewed"),
+    publicationState: text("publication_state").notNull().default("private"),
+    lastDirectorySeenAt: text("last_directory_seen_at").notNull(),
+    lastProfileCheckedAt: text("last_profile_checked_at"),
+    nextProfileCheckAt: text("next_profile_check_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_candidate_profiles_slug").on(table.slug),
+    index("idx_candidate_profiles_due").on(table.nextProfileCheckAt, table.lastProfileCheckedAt),
+    index("idx_candidate_profiles_review").on(table.reviewState, table.lastDirectorySeenAt),
+    check(
+      "candidate_profiles_completeness_check",
+      sql`${table.completenessState} IN ('directory-only', 'profile-parsed', 'candidate-verified')`,
+    ),
+    check(
+      "candidate_profiles_review_check",
+      sql`${table.reviewState} IN ('unreviewed', 'approved', 'rejected', 'needs-update')`,
+    ),
+    check(
+      "candidate_profiles_publication_check",
+      sql`${table.publicationState} IN ('private', 'published', 'withheld')`,
+    ),
+    check(
+      "candidate_profiles_publish_requires_review_check",
+      sql`${table.publicationState} != 'published' OR ${table.reviewState} = 'approved'`,
+    ),
+  ],
+);
+
+export const candidateLinks = sqliteTable(
+  "candidate_links",
+  {
+    id: text("id").primaryKey(),
+    candidacyId: text("candidacy_id")
+      .notNull()
+      .references(() => candidacies.id),
+    linkType: text("link_type").notNull(),
+    label: text("label").notNull(),
+    url: text("url").notNull(),
+    urlHash: text("url_hash").notNull(),
+    sourceObservationId: text("source_observation_id")
+      .notNull()
+      .references(() => candidateProfileObservations.id),
+    verificationState: text("verification_state").notNull().default("discovered"),
+    reviewState: text("review_state").notNull().default("unreviewed"),
+    publicationState: text("publication_state").notNull().default("private"),
+    firstSeenAt: text("first_seen_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_candidate_links_candidate_url").on(table.candidacyId, table.urlHash),
+    index("idx_candidate_links_review").on(table.reviewState, table.linkType),
+    check(
+      "candidate_links_verification_check",
+      sql`${table.verificationState} IN ('discovered', 'source-verified', 'candidate-verified', 'broken')`,
+    ),
+    check(
+      "candidate_links_publish_requires_review_check",
+      sql`${table.publicationState} != 'published' OR ${table.reviewState} = 'approved'`,
+    ),
+  ],
+);
+
+export const candidateMediaAssets = sqliteTable(
+  "candidate_media_assets",
+  {
+    id: text("id").primaryKey(),
+    candidacyId: text("candidacy_id")
+      .notNull()
+      .references(() => candidacies.id),
+    mediaKind: text("media_kind").notNull(),
+    variant: text("variant").notNull(),
+    remoteUrl: text("remote_url").notNull(),
+    remoteUrlHash: text("remote_url_hash").notNull(),
+    sourcePageUrl: text("source_page_url").notNull(),
+    sourceObservationId: text("source_observation_id")
+      .notNull()
+      .references(() => candidateProfileObservations.id),
+    sourceSnapshotId: text("source_snapshot_id")
+      .notNull()
+      .references(() => sourceSnapshots.id),
+    rightsState: text("rights_state").notNull().default("unknown"),
+    reuseBasis: text("reuse_basis"),
+    attribution: text("attribution"),
+    contentType: text("content_type"),
+    width: integer("width"),
+    height: integer("height"),
+    contentHash: text("content_hash"),
+    storageKey: text("storage_key"),
+    retentionOutcome: text("retention_outcome").notNull().default("metadata-only"),
+    reviewState: text("review_state").notNull().default("unreviewed"),
+    publicationState: text("publication_state").notNull().default("private"),
+    firstSeenAt: text("first_seen_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_candidate_media_candidate_url").on(table.candidacyId, table.remoteUrlHash),
+    index("idx_candidate_media_rights_review").on(table.rightsState, table.reviewState),
+    check(
+      "candidate_media_rights_check",
+      sql`${table.rightsState} IN ('unknown', 'link-only', 'candidate-permission', 'redistributable', 'takedown')`,
+    ),
+    check(
+      "candidate_media_retention_check",
+      sql`${table.retentionOutcome} IN ('metadata-only', 'stored-private', 'stored-publishable', 'removed')`,
+    ),
+    check(
+      "candidate_media_publish_rights_check",
+      sql`${table.publicationState} != 'published' OR (
+        ${table.reviewState} = 'approved'
+        AND ${table.storageKey} IS NOT NULL
+        AND ${table.retentionOutcome} = 'stored-publishable'
+        AND ${table.rightsState} IN ('candidate-permission', 'redistributable')
+      )`,
+    ),
+  ],
+);
+
+export const candidateDocuments = sqliteTable(
+  "candidate_documents",
+  {
+    id: text("id").primaryKey(),
+    candidacyId: text("candidacy_id")
+      .notNull()
+      .references(() => candidacies.id),
+    documentKind: text("document_kind").notNull(),
+    title: text("title").notNull(),
+    canonicalUrl: text("canonical_url").notNull(),
+    canonicalUrlHash: text("canonical_url_hash").notNull(),
+    sourceObservationId: text("source_observation_id")
+      .notNull()
+      .references(() => candidateProfileObservations.id),
+    sourceSnapshotId: text("source_snapshot_id")
+      .notNull()
+      .references(() => sourceSnapshots.id),
+    rightsState: text("rights_state").notNull().default("unknown"),
+    contentHash: text("content_hash"),
+    storageKey: text("storage_key"),
+    processingState: text("processing_state").notNull().default("discovered"),
+    reviewState: text("review_state").notNull().default("unreviewed"),
+    publicationState: text("publication_state").notNull().default("private"),
+    firstSeenAt: text("first_seen_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_candidate_documents_candidate_url").on(
+      table.candidacyId,
+      table.canonicalUrlHash,
+    ),
+    index("idx_candidate_documents_processing").on(table.processingState, table.documentKind),
+    check(
+      "candidate_documents_kind_check",
+      sql`${table.documentKind} IN ('manifesto', 'transcript', 'statement', 'other')`,
+    ),
+    check(
+      "candidate_documents_publish_requires_review_check",
+      sql`${table.publicationState} != 'published' OR ${table.reviewState} = 'approved'`,
+    ),
   ],
 );
 

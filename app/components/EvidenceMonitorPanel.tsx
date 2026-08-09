@@ -9,6 +9,15 @@ function formatTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 export function EvidenceMonitorPanel({ dashboard }: { dashboard: EvidenceDashboard | null }) {
   if (!dashboard) {
     return (
@@ -45,6 +54,43 @@ export function EvidenceMonitorPanel({ dashboard }: { dashboard: EvidenceDashboa
             <small>Tier {source.source_tier} · {formatTime(source.last_success_at)}</small>
           </article>
         ))}
+      </div>
+      <div className="candidate-registry-panel">
+        <div className="candidate-registry-heading">
+          <div>
+            <span>Maintained candidate registry</span>
+            <h3>{dashboard.counts.candidates} prospective candidates discovered</h3>
+          </div>
+          <small>
+            {dashboard.counts.parsedCandidateProfiles}/{dashboard.counts.candidates} source profiles parsed
+          </small>
+        </div>
+        <div className="candidate-registry-stats">
+          <div><strong>{dashboard.counts.candidatePortraits}</strong><span>portrait references</span></div>
+          <div><strong>{dashboard.counts.pendingCandidateReview}</strong><span>profiles to review</span></div>
+          <div><strong>{dashboard.counts.publishableCandidatePortraits}</strong><span>photos cleared for reuse</span></div>
+        </div>
+        <div className="candidate-registry-list">
+          {dashboard.candidateProfiles.slice(0, 8).map((candidate) => (
+            <article key={candidate.candidacy_id}>
+              <span className="candidate-registry-avatar" aria-hidden="true">
+                {initials(candidate.full_name)}
+              </span>
+              <div>
+                <strong>{candidate.full_name}</strong>
+                <small>{candidate.constituency_name} · {candidate.completeness_state.replace("-", " ")}</small>
+              </div>
+              <span className="candidate-rights-state">
+                Photo {candidate.portrait_rights_state ?? "not found"}
+              </span>
+              <a href={candidate.profile_url} rel="noreferrer" target="_blank">Source ↗</a>
+            </article>
+          ))}
+        </div>
+        <p className="candidate-registry-note">
+          Portrait URLs and source pages are recorded for review. No candidate photo is copied or
+          published until its reuse basis is documented.
+        </p>
       </div>
       {dashboard.reviewItems.length ? (
         <div className="evidence-inbox">
