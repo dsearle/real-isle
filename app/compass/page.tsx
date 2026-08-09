@@ -5,7 +5,7 @@ import { VoteCompass } from "../components/VoteCompass";
 
 export const metadata: Metadata = {
   title: "Private vote compass",
-  description: "Explore your priorities for the 2026 House of Keys election without sending your answers to Real Isle.",
+  description: "Explore your priorities for the 2026 House of Keys election without sending your answers to The People’s Isle.",
 };
 
 export default function CompassPage() {
@@ -21,7 +21,7 @@ export default function CompassPage() {
           <span aria-hidden="true">◇</span>
           <div>
             <strong>Local-only answers</strong>
-            <small>Nothing is sent to Real Isle</small>
+            <small>Nothing is sent to The People’s Isle</small>
           </div>
         </div>
       </section>

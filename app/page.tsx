@@ -44,7 +44,7 @@ export default function Home() {
                 Try the private compass <span aria-hidden="true">→</span>
               </a>
             </div>
-            <div className="hero-meta hero-meta-v2" aria-label="Real Isle evidence coverage">
+            <div className="hero-meta hero-meta-v2" aria-label="The People’s Isle evidence coverage">
               <div>
                 <strong>12</strong>
                 <span>areas mapped</span>
@@ -119,7 +119,7 @@ export default function Home() {
             <h2>Compare what candidates have actually said.</h2>
           </div>
           <p>
-            “Not found” is a meaningful result. Real Isle does not infer a
+            “Not found” is a meaningful result. The People’s Isle does not infer a
             position from party, biography, likes, or silence.
           </p>
         </div>
@@ -165,7 +165,7 @@ export default function Home() {
       <section className="section shell trust-section">
         <div className="trust-card trust-card-main">
           <span className="trust-number">01</span>
-          <p className="eyebrow eyebrow-dark">How Real Isle earns trust</p>
+          <p className="eyebrow eyebrow-dark">How The People’s Isle earns trust</p>
           <h2>Readable in a minute. Auditable for years.</h2>
           <p>
             Every published position keeps the source URL, observation time,
@@ -181,7 +181,7 @@ export default function Home() {
         <div className="trust-card">
           <span className="trust-icon" aria-hidden="true">◇</span>
           <h3>Private by design</h3>
-          <p>The launch compass runs in your browser. Answers are not sent to Real Isle.</p>
+          <p>The launch compass runs in your browser. Answers are not sent to The People’s Isle.</p>
         </div>
         <div className="trust-card trust-card-accent">
           <span className="trust-icon" aria-hidden="true">↺</span>

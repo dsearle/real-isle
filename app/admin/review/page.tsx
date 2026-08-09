@@ -23,7 +23,7 @@ export default async function ReviewPage() {
           <h1>Admin access is locked</h1>
           <p>
             You are signed in, but this Site-specific account has not been added to the
-            Real Isle administrator allowlist.
+            The People’s Isle administrator allowlist.
           </p>
           <div className="admin-identity-card">
             <span>{access.configured ? "Access not granted" : "First-admin setup required"}</span>

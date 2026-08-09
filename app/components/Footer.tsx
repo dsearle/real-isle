@@ -6,7 +6,7 @@ export function Footer() {
         <div>
           <a className="brand brand-footer" href="/">
             <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
-            <span>Real Isle</span>
+            <span>The People’s Isle</span>
           </a>
           <p>Independent civic intelligence for the Isle of Man.</p>
         </div>
@@ -26,7 +26,7 @@ export function Footer() {
         <div className="footer-note">
           <span>Founder-published</span>
           <p>
-            Real Isle is initially founded, edited and reviewed by David Searle.
+            The People’s Isle is initially founded, edited and reviewed by David Searle.
             It is not an official election authority.
           </p>
         </div>

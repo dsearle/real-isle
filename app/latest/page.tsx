@@ -18,7 +18,7 @@ export default async function LatestPage() {
         <div className="shell">
           <p className="eyebrow">Monitored · reviewed · linked</p>
           <h1>The election desk</h1>
-          <p>Campaign updates are separated from the evidence Real Isle has reviewed and published.</p>
+          <p>Campaign updates are separated from the evidence The People’s Isle has reviewed and published.</p>
         </div>
       </section>
       <section className="section shell desk-page-layout">

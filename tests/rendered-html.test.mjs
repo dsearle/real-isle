@@ -13,13 +13,13 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the Real Isle election hub", async () => {
+test("server-renders The People’s Isle election hub", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Real Isle/);
+  assert.match(html, /<title>The People’s Isle/);
   assert.match(html, /Your Isle/);
   assert.match(html, /Your Future/);
   assert.match(html, /People standing near you/);
@@ -53,5 +53,5 @@ test("server-renders the private compass", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /What do you want the next Keys to change/);
-  assert.match(html, /Nothing is sent to Real Isle/);
+  assert.match(html, /Nothing is sent to The People’s Isle/);
 });

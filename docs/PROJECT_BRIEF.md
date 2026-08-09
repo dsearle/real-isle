@@ -1,4 +1,4 @@
-# Real Isle — Isle of Man Civic Intelligence Platform
+# The People's Isle — Isle of Man Civic Intelligence Platform
 
 **Document status:** Consolidated build brief and product specification
 
@@ -6,18 +6,18 @@
 
 **Target election:** House of Keys General Election, 24 September 2026
 
-**Product name:** **Real Isle**
+**Product name:** **The People's Isle**
 **First meaningful public release target:** 16 August 2026
 
 ## 1. Executive summary
 
-Real Isle will be an independent, non-partisan, open-source civic intelligence platform that helps Isle of Man residents understand who is seeking to represent them, what each person has said, where their evidence comes from, and how positions compare on the issues that matter locally.
+The People's Isle will be an independent, non-partisan, open-source civic intelligence platform that helps Isle of Man residents understand who is seeking to represent them, what each person has said, where their evidence comes from, and how positions compare on the issues that matter locally.
 
 The public experience will begin with the Island itself: a visually distinctive, mobile-first map of the 12 constituencies, supported by authentic Island imagery and candidate portraits. A visitor can select where they live, meet the prospective or nominated candidates, compare their stated positions, inspect the underlying manifesto, interview, public record, or news source, and privately compare their own views through a local-only vote compass.
 
 The intelligence system will monitor approved public sources, discover new election material, transcribe permitted audio and video, identify candidate and topic references, and propose evidence-backed summaries. Automation assists the editors; it does not make final political judgements. Candidate positions, potentially damaging claims, identity matches, and substantive AI summaries require human review before publication.
 
-The 2026 election is the first release, not the end of the product. After polling day, Real Isle will transition into a five-year accountability service that connects elected representatives to their prior manifestos, commitments, Tynwald activity, public statements, government responsibilities, and evidenced delivery status.
+The 2026 election is the first release, not the end of the product. After polling day, The People's Isle will transition into a five-year accountability service that connects elected representatives to their prior manifestos, commitments, Tynwald activity, public statements, government responsibilities, and evidenced delivery status.
 
 The defining promise is:
 
@@ -35,7 +35,7 @@ The hub must not imply that it is the official election authority, reproduce pub
 - One authenticated owner/admin begins the review process; additional reviewers can be invited later through role-based access.
 - Candidate profile claims are manually verified by the owner initially.
 - Existing MHK manifestos and evidenced delivery history are in scope because they materially strengthen the platform.
-- Real Isle is intended to be fully open source, subject to separating redistributable public data from private, restricted, personal, or copyrighted research material.
+- The People's Isle is intended to be fully open source, subject to separating redistributable public data from private, restricted, personal, or copyrighted research material.
 - Founder and initial publisher/editor: **David Searle**, using his real name with transparent founder-operated disclosure.
 - Preferred public domain: **realisle.im**.
 - Public source repository target: David Searle's personal GitHub account, `dsearle/real-isle`.
@@ -130,7 +130,7 @@ An older position remains available, but a visitor can see when it was stated, w
 
 No account is required for the public experience. The vote compass asks for no name, email, exact address, full postcode, electoral-register detail, or demographic profile and keeps political answers on the visitor's device by default.
 
-The launch vote compass performs weighting and candidate comparison locally in the browser. Answers are not submitted to Real Isle by default. A future share feature must encode the minimum necessary result and require an explicit visitor action.
+The launch vote compass performs weighting and candidate comparison locally in the browser. Answers are not submitted to The People's Isle by default. A future share feature must encode the minimum necessary result and require an explicit visitor action.
 
 ### Auditable by construction
 
@@ -357,12 +357,12 @@ The methodology is a top-level product feature, not footer small print. Publish:
 
 Returning-candidate and incumbent views extend beyond the campaign: prior elections, manifestos, commitment evidence and office history use the same source drawers and revision system as current positions. After election night, elected cards transition into a visual House of Keys representation and then into representative/accountability profiles; unsuccessful candidacies remain in the permanent election archive.
 
-Real Isle should generate accessible, high-quality share cards/pages for constituencies, candidate introductions, evidenced issue comparisons, manifesto changes, political-system explainers and official results. Share text must avoid endorsement, popularity language and decontextualised AI conclusions. Every shareable conclusion resolves to a stable public revision with evidence.
+The People's Isle should generate accessible, high-quality share cards/pages for constituencies, candidate introductions, evidenced issue comparisons, manifesto changes, political-system explainers and official results. Share text must avoid endorsement, popularity language and decontextualised AI conclusions. Every shareable conclusion resolves to a stable public revision with evidence.
 
 Phase II adds:
 
 - visual progressive-disclosure explainers for Tynwald, House of Keys, Legislative Council, MHK/MLC roles, Chief Minister selection, Council of Ministers, legislation, budgets, committees and scrutiny;
-- **Ask Real Isle**, a retrieval interface that answers only from approved evidence, cites each substantive political answer, exposes uncertainty, and prefers “not enough reliable evidence” to completion from general model knowledge;
+- **Ask The People's Isle**, a retrieval interface that answers only from approved evidence, cites each substantive political answer, exposes uncertainty, and prefers “not enough reliable evidence” to completion from general model knowledge;
 - optional learning mechanics such as constituency/history quizzes or exploration progress, rewarding understanding rather than candidate loyalty;
 - richer election-night map/card transitions and the interactive House of Keys.
 
@@ -403,7 +403,7 @@ Manifestos are not treated as undifferentiated prose. The extractor preserves th
 - **Observation/diagnosis** — description of a problem without a promised action
 - **Unclear** — evidence is insufficient to classify safely
 
-For returning candidates, a prior commitment may receive one reviewed accountability status: **not started**, **evidence of activity**, **in progress**, **delivered**, **partially delivered**, **changed/superseded**, **blocked or outside individual control**, or **insufficient evidence**. Status, attribution limits and evidence are shown together. Real Isle never rolls these into a simplistic percentage or league table.
+For returning candidates, a prior commitment may receive one reviewed accountability status: **not started**, **evidence of activity**, **in progress**, **delivered**, **partially delivered**, **changed/superseded**, **blocked or outside individual control**, or **insufficient evidence**. Status, attribution limits and evidence are shown together. The People's Isle never rolls these into a simplistic percentage or league table.
 
 ### 8.2 Evidence hierarchy
 
@@ -550,7 +550,7 @@ Internet sources can change or disappear. Each accepted evidence item therefore 
 
 The object store uses immutable/versioned keys and retention rules. Database records reference the content digest rather than a mutable filename. The cryptographic audit layer proves that a particular digest was relied upon at a particular publication revision.
 
-Public availability is separate from preservation. Candidate manifestos and other clearly redistributable primary material may be exposed directly when rights permit. For third-party journalism, broadcasts, social posts, personal data, or unclear licences, Real Isle normally publishes only necessary excerpts, metadata, hashes and links; the complete research snapshot remains restricted to authorised reviewers or is not retained. A public hash does not create a right to republish copyrighted or erased material.
+Public availability is separate from preservation. Candidate manifestos and other clearly redistributable primary material may be exposed directly when rights permit. For third-party journalism, broadcasts, social posts, personal data, or unclear licences, The People's Isle normally publishes only necessary excerpts, metadata, hashes and links; the complete research snapshot remains restricted to authorised reviewers or is not retained. A public hash does not create a right to republish copyrighted or erased material.
 
 When a source disappears, the public record states that the original link is unavailable and when it was last observed. It may show the previously reviewed claim and permitted excerpt with its provenance, but must not automatically expose a restricted full snapshot. Valid legal, privacy and takedown requests create a tombstone/correction event rather than rewriting history invisibly.
 
@@ -580,14 +580,14 @@ Admin suggestions include evidence and a confidence band. A human must confirm i
 
 ### 9.8 Facebook and YouTube integration policy
 
-Facebook is likely to contain important candidate material, but it is not a dependable open-news feed. Real Isle must not build its evidence pipeline around logged-in scraping, browser-session automation, private groups, personal-friend access, or attempts to evade Meta controls. “Public on Facebook” does not automatically mean available through a supported API or licensed for wholesale republication.
+Facebook is likely to contain important candidate material, but it is not a dependable open-news feed. The People's Isle must not build its evidence pipeline around logged-in scraping, browser-session automation, private groups, personal-friend access, or attempts to evade Meta controls. “Public on Facebook” does not automatically mean available through a supported API or licensed for wholesale republication.
 
 Use a layered Facebook approach:
 
-1. **Candidate-authorised Page connection** — after manually claiming a Real Isle profile, a candidate who controls a Facebook Page may connect it through the supported Meta login/Page permission flow. Store revocable tokens in the secret store, not the database/repository. Ingest only the Page/content the candidate explicitly authorises.
-2. **Approved public Page access** — investigate Meta App Review and any required Page Public Content Access/business verification for monitoring allowlisted public Pages not controlled by Real Isle. Treat approval as an external dependency, not a launch assumption.
-3. **Public-link evidence inbox** — the owner, candidate or contributor submits a specific public Facebook post URL. Real Isle records the URL, observed metadata, necessary excerpt/screenshot where lawful, retrieval time, content digest and review outcome. This is the launch-safe path for candidate personal profiles and posts that the API cannot monitor.
-4. **Candidate syndication** — encourage candidates to submit the same statement through their website, manifesto upload, Real Isle candidate portal or a lightweight structured feed as well as Facebook. That creates durable primary evidence without making Facebook the only copy.
+1. **Candidate-authorised Page connection** — after manually claiming a profile on The People's Isle, a candidate who controls a Facebook Page may connect it through the supported Meta login/Page permission flow. Store revocable tokens in the secret store, not the database/repository. Ingest only the Page/content the candidate explicitly authorises.
+2. **Approved public Page access** — investigate Meta App Review and any required Page Public Content Access/business verification for monitoring allowlisted public Pages not controlled by The People's Isle. Treat approval as an external dependency, not a launch assumption.
+3. **Public-link evidence inbox** — the owner, candidate or contributor submits a specific public Facebook post URL. The People's Isle records the URL, observed metadata, necessary excerpt/screenshot where lawful, retrieval time, content digest and review outcome. This is the launch-safe path for candidate personal profiles and posts that the API cannot monitor.
+4. **Candidate syndication** — encourage candidates to submit the same statement through their website, manifesto upload, The People's Isle candidate portal or a lightweight structured feed as well as Facebook. That creates durable primary evidence without making Facebook the only copy.
 5. **Public embed where appropriate** — an individual public post may be embedded using Meta-supported tools after consent/cookie and disappearance behaviour are assessed. The evidence record still needs a stable reviewed excerpt and source-observed timestamp because embeds can vanish.
 
 Facebook safeguards:
@@ -595,7 +595,7 @@ Facebook safeguards:
 - Monitor only manually verified candidate/publication Pages or specific submitted public URLs.
 - Do not ingest comments, reactions, friend lists, group membership, engagement counts or supporter identities as candidate intelligence.
 - A personal-profile post can establish what a candidate publicly said only after identity and public visibility are manually verified.
-- If visibility changes or a post is deleted, mark it unavailable and follow the rights-aware source preservation policy; do not expose a restricted copy merely because Real Isle once saw it.
+- If visibility changes or a post is deleted, mark it unavailable and follow the rights-aware source preservation policy; do not expose a restricted copy merely because The People's Isle once saw it.
 - Facebook availability, likes and shares never contribute to candidate prominence, credibility or the compass.
 
 YouTube is more suitable for continuous discovery. For each manually verified media/candidate channel:
@@ -605,8 +605,8 @@ YouTube is more suitable for continuous discovery. For each manually verified me
 - ingest title, description, channel, publication time, thumbnail/embedding state and canonical video URL under YouTube policy;
 - embed public videos rather than rehosting them unless separate permission exists;
 - queue relevant videos for rights review, transcription, speaker identification and topic extraction;
-- prefer publisher/candidate-supplied transcripts or captions. The official caption endpoints require authorised access, so public-video discovery does not imply that Real Isle may download caption tracks without channel authorisation;
-- preserve the Real Isle transcript only when transcription and retention are lawful, label it as machine/editor-corrected, and always link/timestamp the original video.
+- prefer publisher/candidate-supplied transcripts or captions. The official caption endpoints require authorised access, so public-video discovery does not imply that The People's Isle may download caption tracks without channel authorisation;
+- preserve a People's Isle transcript only when transcription and retention are lawful, label it as machine/editor-corrected, and always link/timestamp the original video.
 
 Connector health is isolated by platform. Failure or revocation of Meta/YouTube credentials pauses that connector and alerts the owner without removing previously reviewed, lawfully retained evidence.
 
@@ -654,7 +654,7 @@ It remains impossible to guarantee one human response while collecting no reliab
 
 ### 10.3 ZK research path for future participation
 
-Zero-knowledge proofs may eventually let a person prove membership of an eligible group and create an election/constituency-specific nullifier to prevent duplicate signalling without publicly revealing identity. Protocols such as [Semaphore](https://docs.semaphore.pse.dev/) demonstrate the pattern, but Real Isle's blockchain implementation will be Sui-native rather than dependent on an EVM contract.
+Zero-knowledge proofs may eventually let a person prove membership of an eligible group and create an election/constituency-specific nullifier to prevent duplicate signalling without publicly revealing identity. Protocols such as [Semaphore](https://docs.semaphore.pse.dev/) demonstrate the pattern, but The People's Isle blockchain implementation will be Sui-native rather than dependent on an EVM contract.
 
 The research architecture is:
 
@@ -662,7 +662,7 @@ The research architecture is:
 2. The visitor generates a proof locally that their credential is included, its constituency attribute satisfies the selected constituency, and the public nullifier is derived correctly for this election/pulse.
 3. A Sui Move module verifies the Groth16 proof using Sui's native [`sui::groth16`](https://docs.sui.io/references/framework/sui/groth16) verifier and rejects a nullifier already recorded for the same scope.
 4. The on-chain record contains only circuit/version identifiers, eligibility-root reference, scope, nullifier and aggregate-safe signal—not identity, credential, address, postcode or raw preference metadata.
-5. Real Isle pays/sponsors submission costs so a member of the public is not required to own SUI or understand wallets.
+5. The People's Isle pays/sponsors submission costs so a member of the public is not required to own SUI or understand wallets.
 
 Sui `zkLogin` may later make contributor/candidate blockchain signing easier through supported OpenID providers, but it proves control of an OIDC identity—not Manx electoral eligibility or constituency. It cannot replace the credential issuer.
 
@@ -741,7 +741,7 @@ Candidate claiming is manual at launch. The owner records verification method an
 
 ### 11.5 Community-evidence and dispute notes
 
-Real Isle will adopt a Community Notes-inspired evidence process without turning truth into a popularity vote or opening an unmoderated comment section.
+The People's Isle will adopt a Community Notes-inspired evidence process without turning truth into a popularity vote or opening an unmoderated comment section.
 
 1. A registered contributor proposes a note against a specific claim, position, source or revision and must provide evidence.
 2. The note enters a non-public moderation queue with spam, identity, conflict and source checks.
@@ -893,7 +893,7 @@ The objective is independently detectable tampering, not “put the database on 
 1. Canonicalise each public revision and editorial decision into deterministic JSON.
 2. Hash the payload and link each audit event to the previous event digest.
 3. Batch public revision digests into a Merkle tree.
-4. Sign the tree checkpoint with a protected Real Isle publishing identity.
+4. Sign the tree checkpoint with the protected publishing identity for The People's Isle.
 5. Publish the checkpoint and inclusion proofs through the site and a separately controlled public location.
 6. Provide an open-source verifier that can validate a revision payload, signature, inclusion proof and checkpoint sequence.
 7. Preserve corrections as new leaves; never mutate an earlier leaf.
@@ -931,7 +931,7 @@ Blockchain rules:
 - Store only roots/digests, sequence/schema information and minimal non-personal checkpoint metadata on Sui.
 - Never put source text, source URLs containing personal data, candidate details, visitor answers, contributor identities, disputes, IP addresses, credentials or encrypted personal data on-chain.
 - Sui anchoring cannot be required for normal publishing; network/provider failure queues the checkpoint without blocking corrections or news and the UI distinguishes `signed` from `Sui anchored`.
-- Visitors, candidates and reviewers need no wallet for normal Real Isle use. Real Isle funds checkpoint transactions; no Real Isle token, cryptocurrency incentive or governance-by-token exists.
+- Visitors, candidates and reviewers need no wallet to use The People's Isle normally. The People's Isle funds checkpoint transactions; no People's Isle token, cryptocurrency incentive or governance-by-token exists.
 - Administrator approval uses MFA/passkeys, database authorisation and signed attestations. A Sui publisher capability authorises anchoring, not editorial truth.
 - Package upgrades and `UpgradeCap` custody are separate from checkpoint publishing and require manual production approval, tests and a public upgrade record.
 - Ordinary Merkle proofs verify publication history. Sui Groth16/ZK is limited to the future eligibility/nullifier research in section 10.3.
@@ -1022,7 +1022,7 @@ This document is a product specification, not legal advice.
 
 The publisher/legal operator is unresolved. Open sourcing improves inspection but does not by itself answer who controls data, responds to complaints, owns infrastructure, carries legal risk, pays vendors, or makes final editorial decisions.
 
-Launch must state the current reality plainly: Real Isle is initially founded, published and edited by **David Searle**, who is the only reviewer; formal independent oversight is not yet established; and all funding or in-kind support is disclosed. Qualified Manx advice should confirm the required publisher, contact and data-controller disclosures.
+Launch must state the current reality plainly: The People's Isle is initially founded, published and edited by **David Searle**, who is the only reviewer; formal independent oversight is not yet established; and all funding or in-kind support is disclosed. Qualified Manx advice should confirm the required publisher, contact and data-controller disclosures.
 
 The near-term path is honest founder-operated disclosure, followed by consideration of an incorporated/non-profit operator or non-partisan oversight group and an **Editorial & Evidence Charter**. Reviewer access remains invitation-only initially. Every future reviewer uses an individual authenticated account; shared admin credentials are prohibited. Public cryptographic/Sui audit proves what was published and changed, but it cannot prove that an editorial judgement was fair—methodology, reviewer diversity, appeals and accountable identities remain necessary.
 
@@ -1085,7 +1085,7 @@ The calendar is compressed. Scope discipline and editorial staffing are as impor
 The one-week release is intentionally broad in capability but honest about evidence depth. It covers all 12 constituencies and every credibly declared/prospective candidate found through the approved process; deeper manifesto/interview/history content appears only where evidence is available and reviewed. Empty fields state “not yet found” rather than being filled by inference.
 
 - Establish repository instructions, branch/preview workflow, environments, protected production data, database migrations, backups and feature flags.
-- Implement Real Isle design system, accessible Island map/list, constituency routes, visual candidate cards and responsive profiles.
+- Implement The People's Isle design system, accessible Island map/list, constituency routes, visual candidate cards and responsive profiles.
 - Build core election/candidate/source/manifesto/claim/evidence/revision models and owner-only admin authentication.
 - Seed all 12 constituencies and public prospective-candidate records with precise status/source timestamps.
 - Monitor official election pages and an initial allowlist of local news feeds; publish safe **Just in** metadata and queue interpretation.
@@ -1097,7 +1097,7 @@ The one-week release is intentionally broad in capability but honest about evide
 - Publish methodology, current founder-operated governance state, AI policy, source policy, corrections/disputes route, privacy and rights notices.
 - Verify critical mobile, accessibility, security, source-monitoring, compass-privacy and deployment flows on a Vercel preview before explicit production promotion.
 
-**Exit:** a public, polished, evidence-safe Real Isle release by approximately 16 August. It may display incomplete evidence coverage, but no unsupported political conclusion and no hidden candidate prioritisation.
+**Exit:** a public, polished, evidence-safe The People's Isle release by approximately 16 August. It may display incomplete evidence coverage, but no unsupported political conclusion and no hidden candidate prioritisation.
 
 ### Phase 1 — Harden, enrich and reconcile nominations (17–30 August)
 
@@ -1138,7 +1138,7 @@ The one-week release is intentionally broad in capability but honest about evide
 - Preserve candidate, position, source, and transcript history under the retention/rights plan.
 - Transition elected cards into a visual House of Keys and five-year accountability experience.
 - Track manifesto commitments, Tynwald activity, votes, roles, statements, policy outcomes and attribution limits through the same evidenced revision model.
-- Add the political-system explainer and evidence-grounded **Ask Real Isle** interface as Phase II public experiences.
+- Add the political-system explainer and evidence-grounded **Ask The People's Isle** interface as Phase II public experiences.
 - Research—but do not presume—the ZK credential issuer and public-checkpoint blockchain anchor.
 
 ## 19. P0 acceptance criteria
@@ -1212,7 +1212,7 @@ To maximise trust and still launch before the campaign peak:
 - Send every candidate the same structured topic questions and invite official links, portraits, manifestos, and corrections.
 - Treat Manx Radio debates as a planned editorial operation, not just an automated transcription job.
 - Publish a small source/evidence vocabulary that ordinary users can understand.
-- Preserve lawful source snapshots and publish signed revision checkpoints so a removed page cannot silently rewrite what Real Isle relied on.
+- Preserve lawful source snapshots and publish signed revision checkpoints so a removed page cannot silently rewrite what The People's Isle relied on.
 - Use Git-protected, isolated Vercel previews and forward-only data migrations so continual Codex development is safe by default.
 - Use the Island map and portraits as the emotional entrance, then let evidence—not visual drama—carry the political meaning.
 - Prefer a transparent, useful incomplete record over a falsely comprehensive automated one.
@@ -1221,4 +1221,4 @@ To maximise trust and still launch before the campaign peak:
 
 ### Working definition of a successful launch
 
-By the 16 August meaningful release, a resident should be able to open Real Isle on a phone, select any constituency, recognise every credibly discovered declared/prospective candidate, open a consistently structured profile, follow continuously monitored news, inspect available manifesto/interview evidence, compare reviewed positions, use a private local-only compass, understand what remains unanswered, and trust that the owner can approve, reject, dispute and visibly correct every published claim. After official nominations close, the same records transition to verified nominated status without rebuilding the pages.
+By the 16 August meaningful release, a resident should be able to open The People's Isle on a phone, select any constituency, recognise every credibly discovered declared/prospective candidate, open a consistently structured profile, follow continuously monitored news, inspect available manifesto/interview evidence, compare reviewed positions, use a private local-only compass, understand what remains unanswered, and trust that the owner can approve, reject, dispute and visibly correct every published claim. After official nominations close, the same records transition to verified nominated status without rebuilding the pages.

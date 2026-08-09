@@ -7,7 +7,7 @@ export type EvidenceBindings = Pick<Cloudflare.Env, "DB" | "INGESTION_SECRET" | 
 export function getEvidenceBindings(): EvidenceBindings {
   if (!env.DB || !env.SNAPSHOTS) {
     throw new Error(
-      "The Real Isle evidence store is unavailable because its D1 or R2 binding is missing.",
+      "The People's Isle evidence store is unavailable because its D1 or R2 binding is missing.",
     );
   }
   return {

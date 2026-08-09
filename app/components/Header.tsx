@@ -3,13 +3,13 @@ export function Header() {
   return (
     <header className="site-header">
       <div className="shell header-inner">
-        <a className="brand" href="/" aria-label="Real Isle home">
+        <a className="brand" href="/" aria-label="The People’s Isle home">
           <span className="brand-mark" aria-hidden="true">
             <i />
             <i />
             <i />
           </span>
-          <span>Real Isle</span>
+          <span>The People’s Isle</span>
         </a>
         <nav className="main-nav" aria-label="Main navigation">
           <a href="/#constituencies">Constituencies</a>

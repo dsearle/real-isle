@@ -1,4 +1,4 @@
-/** Cloudflare Worker entry point for the Real Isle preview runtime. */
+/** Cloudflare Worker entry point for The People's Isle preview runtime. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { runDueIngestion } from "../app/lib/evidence/ingest";
@@ -53,7 +53,7 @@ const worker = {
       ctx.waitUntil(
         runDueIngestion({ DB: env.DB, INGESTION_SECRET: env.INGESTION_SECRET, SNAPSHOTS: env.SNAPSHOTS })
           .then(() => undefined)
-          .catch((error) => console.error("Real Isle evidence monitor failed", error)),
+          .catch((error) => console.error("The People's Isle evidence monitor failed", error)),
       );
     }
 

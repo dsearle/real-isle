@@ -1,6 +1,6 @@
 # Evidence ingestion and audit pipeline
 
-Real Isle treats collected material as evidence, not publishable copy. The
+The People's Isle treats collected material as evidence, not publishable copy. The
 collector may discover and classify a source item automatically, but that item
 remains private until an authorised editor reviews it. Published candidate
 positions and summaries must link to their supporting source records.
@@ -54,7 +54,7 @@ stores its remote URL, source page, source snapshot, variant, dimensions when
 published, observation time, and a rights state. A public image is not assumed
 to be reusable: the default is `rights_state = unknown`, no image bytes are
 copied to R2, and publication is blocked by a database constraint. A portrait
-can only be published from Real Isle storage after review records either
+can only be published from The People's Isle storage after review records either
 candidate permission or a redistributable licence. The initials artwork remains
 the public fallback.
 

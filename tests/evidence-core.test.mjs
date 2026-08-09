@@ -163,11 +163,11 @@ test("unsupported and empty XML cannot masquerade as successful feeds", () => {
 });
 
 test("audit JSON has fixed key ordering and a stable digest", async () => {
-  const payload = stableJson({ z: [3, { b: true, a: null }], a: "Real Isle" });
-  assert.equal(payload, '{"a":"Real Isle","z":[3,{"a":null,"b":true}]}');
+  const payload = stableJson({ z: [3, { b: true, a: null }], a: "The People's Isle" });
+  assert.equal(payload, "{\"a\":\"The People's Isle\",\"z\":[3,{\"a\":null,\"b\":true}]}");
   assert.equal(
     await sha256Hex(payload),
-    "9bcff3cdaee9a215a9a112d06a974b0da3b57ad3389207fa22b6d2b5c64dc2a1",
+    "0002c454dbe710b7f7a95a7a91f68983ea8b50f1a45ec539e6e76fd2d9ccc9dc",
   );
   assert.throws(() => stableJson({ invalid: undefined }), /finite JSON values/);
 });
