@@ -41,6 +41,9 @@ test("candidate cards lead to a complete candidate profile", async () => {
   assert.match(html, /Stated priorities/);
   assert.match(html, /Issue record/);
   assert.match(html, /Original evidence/);
+  assert.match(html, /Animated profile placeholder for Claire Christian/);
+  assert.match(html, /Meet another candidate/);
+  assert.match(html, /data-profile-reveal/);
 });
 
 test("server-renders the private compass", async () => {
