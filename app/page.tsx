@@ -3,28 +3,39 @@ import { ConstituencyExplorer } from "./components/ConstituencyExplorer";
 import { EvidenceCard } from "./components/EvidenceCard";
 import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
+import { HeroIsland } from "./components/HeroIsland";
 import { IssueMatrix } from "./components/IssueMatrix";
 import { candidates, updates } from "./lib/data";
 
 export default function Home() {
   const featuredCandidates = candidates.slice(0, 4);
+  const heroCandidates = candidates.slice(0, 5).map((candidate) => ({
+    slug: candidate.slug,
+    name: candidate.name,
+    initials: candidate.initials,
+    constituency: candidate.constituency,
+    priority: candidate.priorities[0],
+    evidenceCount: candidate.evidenceCount,
+  }));
 
   return (
     <main>
       <Header />
 
-      <section className="hero">
-        <div className="hero-backdrop" aria-hidden="true" />
-        <div className="shell hero-grid">
+      <section className="hero hero-v2">
+        <div className="hero-atmosphere" aria-hidden="true">
+          <i /><i /><i />
+        </div>
+        <div className="shell hero-grid hero-grid-v2">
           <div className="hero-copy">
-            <p className="eyebrow">2026 House of Keys election</p>
+            <p className="eyebrow">The public record, made navigable</p>
             <h1>
-              See the Island.<br />
-              <em>See the evidence.</em>
+              Know who wants<br />
+              <em>your vote.</em>
             </h1>
             <p className="hero-intro">
-              One independent place to examine who is standing, what they have
-              said, and the original sources behind every summary.
+              Move through the Island, meet the people standing in your area,
+              and trace every position back to what was actually said.
             </p>
             <div className="hero-actions">
               <a className="button button-primary" href="#constituencies">
@@ -34,58 +45,28 @@ export default function Home() {
                 Try the private compass <span aria-hidden="true">→</span>
               </Link>
             </div>
-            <div className="hero-meta" aria-label="Election facts">
+            <div className="hero-meta hero-meta-v2" aria-label="Real Isle evidence coverage">
               <div>
                 <strong>12</strong>
-                <span>constituencies</span>
+                <span>areas mapped</span>
               </div>
               <div>
-                <strong>24</strong>
-                <span>seats</span>
+                <strong>6</strong>
+                <span>profiles reviewed</span>
               </div>
               <div>
-                <strong>24 Sep</strong>
-                <span>polling day</span>
+                <strong>100%</strong>
+                <span>claims linked</span>
               </div>
             </div>
           </div>
-
-          <div className="hero-desk" aria-label="Real Isle editorial status">
-            <div className="desk-topline">
-              <span className="status-live">
-                <i aria-hidden="true" /> Election desk monitoring
-              </span>
-              <span>Preview · 9 Aug 2026</span>
-            </div>
-            <p className="desk-kicker">What changed today</p>
-            <h2>Prospective candidates are still declaring.</h2>
-            <p>
-              Formal nominations do not close until 1pm on 26 August. Profiles
-              therefore distinguish a public declaration from official
-              nomination.
-            </p>
-            <a
-              className="source-link"
-              href="https://elections.gov.im/house-of-keys-general-election-2026/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Government election timetable <span aria-hidden="true">↗</span>
-            </a>
-            <div className="desk-stamp">
-              <span aria-hidden="true">✓</span>
-              <div>
-                <strong>Source checked</strong>
-                <small>Original link and observed date recorded</small>
-              </div>
-            </div>
-          </div>
+          <HeroIsland candidates={heroCandidates} />
         </div>
       </section>
 
       <section className="ticker" aria-label="Important election dates">
         <div className="shell ticker-track">
-          <span className="ticker-label">Election clock</span>
+          <span className="ticker-label"><i aria-hidden="true" /> Election intelligence</span>
           <span><b>13 Aug</b> Keys dissolved</span>
           <span><b>25 Aug</b> Voter registration deadline</span>
           <span><b>26 Aug</b> Nominations close</span>
