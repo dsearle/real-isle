@@ -1111,8 +1111,10 @@ a {
   transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
 }
 .candidate-dossier::after { background: var(--coral); bottom: 0; content: ""; left: 145px; position: absolute; top: 0; transform: scaleY(0); transform-origin: bottom; transition: transform 220ms ease; width: 2px; }
-.candidate-dossier:hover { background: rgba(255,255,255,.085); border-color: rgba(240,205,104,.55); transform: translateY(-4px); }
-.candidate-dossier:hover::after { transform: scaleY(1); }
+.candidate-dossier:hover,
+.candidate-dossier:focus-visible { background: rgba(255,255,255,.085); border-color: rgba(240,205,104,.55); transform: translateY(-4px); }
+.candidate-dossier:hover::after,
+.candidate-dossier:focus-visible::after { transform: scaleY(1); }
 .candidate-dossier .dossier-portrait { height: 100%; min-height: 250px; }
 .candidate-dossier .candidate-card-body { display: flex; flex-direction: column; padding: 25px; }
 .candidate-dossier .candidate-status-row { color: rgba(255,255,255,.46); }
@@ -1125,7 +1127,7 @@ a {
 .dossier-footer .evidence-meter { margin: 0; }
 .dossier-footer .evidence-meter > span { background: rgba(255,255,255,.14); }
 .dossier-footer .evidence-meter small { color: rgba(255,255,255,.42); }
-.dossier-footer > a { color: var(--sun); font-size: 9px; font-weight: 800; }
+.dossier-open-link { color: var(--sun); font-size: 9px; font-weight: 800; }
 
 @keyframes island-hover {
   0%, 100% { transform: translate(-50%, -50%) rotateX(55deg) rotateZ(-26deg) translateZ(0); }

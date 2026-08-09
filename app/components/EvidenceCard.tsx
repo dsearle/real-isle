@@ -3,7 +3,11 @@ import type { Candidate } from "../lib/data";
 
 export function EvidenceCard({ candidate }: { candidate: Candidate }) {
   return (
-    <article className="candidate-card candidate-dossier">
+    <Link
+      aria-label={`Open ${candidate.name}'s full candidate profile`}
+      className="candidate-card candidate-dossier"
+      href={`/candidates/${candidate.slug}`}
+    >
       <div className="candidate-portrait dossier-portrait" aria-label={`${candidate.name} portrait pending rights clearance`}>
         <span>{candidate.initials}</span>
         <small>Portrait pending</small>
@@ -24,11 +28,11 @@ export function EvidenceCard({ candidate }: { candidate: Candidate }) {
             <span><i style={{ width: `${Math.min(candidate.evidenceCount * 25 + 20, 100)}%` }} /></span>
             <small>{candidate.evidenceCount} reviewed source{candidate.evidenceCount === 1 ? "" : "s"}</small>
           </div>
-          <Link href={`/candidates/${candidate.slug}`}>
+          <span className="dossier-open-link">
             Open dossier <span aria-hidden="true">↗</span>
-          </Link>
+          </span>
         </div>
       </div>
-    </article>
+    </Link>
   );
 }

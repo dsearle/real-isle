@@ -23,11 +23,22 @@ test("server-renders the Real Isle election hub", async () => {
   assert.match(html, /Your Isle/);
   assert.match(html, /Your Future/);
   assert.match(html, /Live candidate network/);
+  assert.match(html, /href="\/candidates\/claire-christian"/);
   assert.match(html, /12/);
   assert.match(html, /constituencies/i);
   assert.match(html, /Vote compass/i);
   assert.match(html, /David Searle/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+});
+
+test("candidate cards lead to a complete candidate profile", async () => {
+  const response = await render("/candidates/claire-christian");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Claire Christian/);
+  assert.match(html, /Stated priorities/);
+  assert.match(html, /Issue record/);
+  assert.match(html, /Original evidence/);
 });
 
 test("server-renders the private compass", async () => {

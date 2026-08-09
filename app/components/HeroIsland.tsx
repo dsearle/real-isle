@@ -72,14 +72,13 @@ export function HeroIsland({ candidates }: { candidates: HeroCandidate[] }) {
 
       <div className="floating-candidates" aria-label="Featured candidate profiles">
         {candidates.map((candidate, index) => (
-          <button
-            aria-pressed={candidate.slug === active.slug}
+          <Link
+            aria-label={`Open ${candidate.name}'s full candidate profile`}
             className={`floating-candidate floating-candidate-${index + 1} ${candidate.slug === active.slug ? "is-active" : ""}`}
+            href={`/candidates/${candidate.slug}`}
             key={candidate.slug}
-            onClick={() => setActiveSlug(candidate.slug)}
             onFocus={() => setActiveSlug(candidate.slug)}
             onPointerEnter={() => setActiveSlug(candidate.slug)}
-            type="button"
           >
             <span className="floating-avatar">{candidate.initials}</span>
             <span className="floating-copy">
@@ -87,7 +86,7 @@ export function HeroIsland({ candidates }: { candidates: HeroCandidate[] }) {
               <small>{candidate.constituency}</small>
             </span>
             <i className="floating-signal" aria-hidden="true" />
-          </button>
+          </Link>
         ))}
       </div>
 
