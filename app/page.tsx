@@ -2,7 +2,12 @@ import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
 import { HomeViewExperience } from "./components/HomeViewExperience";
 import { IssueMatrix } from "./components/IssueMatrix";
-import { candidates, constituencies, updates } from "./lib/data";
+import {
+  candidates,
+  constituencies,
+  constituencyBoundarySource,
+  updates,
+} from "./lib/data";
 
 export default function Home() {
   const homeCandidates = candidates.flatMap((candidate) => {
@@ -25,6 +30,7 @@ export default function Home() {
       <Header />
 
       <HomeViewExperience
+        boundarySourceUrl={constituencyBoundarySource.url}
         candidates={homeCandidates}
         constituencies={constituencies}
         updates={updates}

@@ -24,12 +24,15 @@ test("server-renders The People’s Isle election hub", async () => {
   assert.match(html, /Your Future/);
   assert.match(html, /Living Atlas/);
   assert.match(html, /Election Desk/);
-  assert.match(html, /Choose a constituency/);
+  assert.match(html, /Choose an area/);
   assert.match(html, /No account, address or postcode is requested/);
-  assert.match(html, /Interactive 3D terrain model of the Isle of Man/);
+  assert.match(html, /North-up 3D terrain map of the Isle of Man/);
   assert.match(html, /high-resolution elevation data/);
   assert.match(html, /relief shown at 5×/);
   assert.match(html, /OUR ACTUAL ISLAND/);
+  assert.match(html, /Representative points · boundaries not shown/);
+  assert.match(html, /Official source/);
+  assert.match(html, /Open evidence profile for Claire Christian, Douglas South/);
   assert.match(html, /12/);
   assert.match(html, /constituencies/i);
   assert.match(html, /Vote compass/i);

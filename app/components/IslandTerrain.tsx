@@ -25,6 +25,18 @@ type TerrainPoint = {
   z: number;
 };
 
+export type TerrainAnchor = {
+  id: string;
+  x: number;
+  y: number;
+};
+
+export type TerrainAnchorPosition = {
+  left: number;
+  top: number;
+  visible: boolean;
+};
+
 function decodeTerrarium(red: number, green: number, blue: number) {
   return red * 256 + green + blue / 256 - 32768;
 }
@@ -137,10 +149,26 @@ function addLinework(
   group.add(new THREE.LineSegments(geometry, material));
 }
 
-export function IslandTerrain() {
+export function IslandTerrain({
+  anchors = [],
+  onAnchorPositions,
+  presentation = "interactive",
+}: {
+  anchors?: readonly TerrainAnchor[];
+  onAnchorPositions?: (positions: Record<string, TerrainAnchorPosition>) => void;
+  presentation?: "atlas" | "interactive";
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const isAtlas = presentation === "atlas";
+  const anchorsRef = useRef(anchors);
+  const onAnchorPositionsRef = useRef(onAnchorPositions);
+
+  useEffect(() => {
+    anchorsRef.current = anchors;
+    onAnchorPositionsRef.current = onAnchorPositions;
+  }, [anchors, onAnchorPositions]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -150,8 +178,8 @@ export function IslandTerrain() {
     let animationFrame = 0;
     let disposed = false;
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(31, 1, 0.1, 100);
-    camera.position.set(0, 5.7, 8.9);
+    const camera = new THREE.PerspectiveCamera(isAtlas ? 28 : 31, 1, 0.1, 100);
+    camera.position.set(0, isAtlas ? 7.4 : 5.7, isAtlas ? 8.2 : 8.9);
     camera.lookAt(0, 0.1, 0);
 
     const renderer = new THREE.WebGLRenderer({
@@ -168,9 +196,26 @@ export function IslandTerrain() {
     renderer.toneMappingExposure = 0.98;
 
     const terrainGroup = new THREE.Group();
-    terrainGroup.rotation.set(-0.1, -0.38, 0);
+    terrainGroup.rotation.set(isAtlas ? 0 : -0.1, isAtlas ? 0 : -0.38, 0);
     terrainGroup.position.y = -0.08;
     scene.add(terrainGroup);
+    const anchorWorldPoints = new Map<string, THREE.Vector3>();
+
+    const projectAnchors = () => {
+      if (!isAtlas || !onAnchorPositionsRef.current || anchorWorldPoints.size === 0) return;
+      terrainGroup.updateMatrixWorld(true);
+      camera.updateMatrixWorld(true);
+      const projected: Record<string, TerrainAnchorPosition> = {};
+      anchorWorldPoints.forEach((worldPoint, id) => {
+        const screenPoint = terrainGroup.localToWorld(worldPoint.clone()).project(camera);
+        projected[id] = {
+          left: (screenPoint.x * 0.5 + 0.5) * 100,
+          top: (-screenPoint.y * 0.5 + 0.5) * 100,
+          visible: screenPoint.z >= -1 && screenPoint.z <= 1,
+        };
+      });
+      onAnchorPositionsRef.current(projected);
+    };
 
     scene.add(new THREE.HemisphereLight(0xeaf4e8, 0x31483f, 0.9));
     const keyLight = new THREE.DirectionalLight(0xffefd1, 2.2);
@@ -233,6 +278,20 @@ export function IslandTerrain() {
           THREE.MathUtils.clamp(row, 0, rows - 1) * columns +
             THREE.MathUtils.clamp(column, 0, columns - 1)
         ];
+
+      anchorWorldPoints.clear();
+      anchorsRef.current.forEach((anchor) => {
+        const column = Math.round(THREE.MathUtils.clamp(anchor.x / 100, 0, 1) * (columns - 1));
+        const row = Math.round(THREE.MathUtils.clamp(anchor.y / 100, 0, 1) * (rows - 1));
+        anchorWorldPoints.set(
+          anchor.id,
+          new THREE.Vector3(
+            (anchor.x / 100 - 0.5) * width,
+            heightToWorld(sampleHeight(row, column)) + 0.045,
+            (anchor.y / 100 - 0.5) * depth,
+          ),
+        );
+      });
 
       for (let row = 0; row < rows; row += 1) {
         for (let column = 0; column < columns; column += 1) {
@@ -317,6 +376,8 @@ export function IslandTerrain() {
       );
       addLinework(terrainGroup, coastline, 0xf9f0d8, 0.82);
       setState("ready");
+      renderer.render(scene, camera);
+      projectAnchors();
     };
     terrainImage.onerror = () => {
       if (!disposed) setState("error");
@@ -329,6 +390,8 @@ export function IslandTerrain() {
       renderer.setSize(bounds.width, bounds.height, false);
       camera.aspect = bounds.width / bounds.height;
       camera.updateProjectionMatrix();
+      renderer.render(scene, camera);
+      projectAnchors();
     };
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(host);
@@ -372,18 +435,21 @@ export function IslandTerrain() {
       } else return;
       event.preventDefault();
     };
-    canvas.addEventListener("pointerdown", onPointerDown);
-    canvas.addEventListener("pointermove", onPointerMove);
-    canvas.addEventListener("pointerup", onPointerUp);
-    canvas.addEventListener("pointercancel", onPointerUp);
-    canvas.addEventListener("keydown", onKeyDown);
+    if (!isAtlas) {
+      canvas.addEventListener("pointerdown", onPointerDown);
+      canvas.addEventListener("pointermove", onPointerMove);
+      canvas.addEventListener("pointerup", onPointerUp);
+      canvas.addEventListener("pointercancel", onPointerUp);
+      canvas.addEventListener("keydown", onKeyDown);
+    }
 
     const render = () => {
       if (!dragging && !reducedMotion) terrainGroup.rotation.y += 0.00065;
       renderer.render(scene, camera);
       animationFrame = window.requestAnimationFrame(render);
     };
-    render();
+    if (isAtlas) renderer.render(scene, camera);
+    else render();
 
     return () => {
       disposed = true;
@@ -404,22 +470,24 @@ export function IslandTerrain() {
       });
       renderer.dispose();
     };
-  }, []);
+  }, [isAtlas]);
 
   return (
-    <div className="terrain-island" ref={hostRef}>
+    <div className={`terrain-island${isAtlas ? " terrain-island-atlas" : ""}`} ref={hostRef}>
       <canvas
-        aria-label="Interactive 3D terrain model of the Isle of Man, built from high-resolution elevation data. Drag to rotate and tilt, or use the arrow keys."
+        aria-label={isAtlas
+          ? "North-up 3D terrain map of the Isle of Man, built from high-resolution elevation data."
+          : "Interactive 3D terrain model of the Isle of Man, built from high-resolution elevation data. Drag to rotate and tilt, or use the arrow keys."}
         className="terrain-canvas"
         ref={canvasRef}
         role="img"
-        tabIndex={0}
+        tabIndex={isAtlas ? undefined : 0}
       />
       {state === "loading" ? <span className="terrain-status">Reading the landscape…</span> : null}
       {state === "error" ? <span className="terrain-status terrain-error">Terrain unavailable</span> : null}
       <div className="terrain-data-chip">
         <strong>OUR ACTUAL ISLAND</strong>
-        <span>Give it a spin · Snaefell 621m · relief shown at 5×</span>
+        <span>{isAtlas ? "North-up terrain · Snaefell 621m · relief shown at 5×" : "Give it a spin · Snaefell 621m · relief shown at 5×"}</span>
         <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noreferrer">
           Elevation: Mapzen / AWS Open Data ↗
         </a>

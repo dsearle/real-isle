@@ -1,8 +1,8 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useCivicPreferences } from "./CivicPreferences";
-import { IslandTerrain } from "./IslandTerrain";
+import { IslandTerrain, type TerrainAnchorPosition } from "./IslandTerrain";
 import styles from "./HomeViewExperience.module.css";
 
 const HOME_VIEW_STORAGE_KEY = "peoples-isle.home-view.v1";
@@ -57,6 +57,8 @@ export type HomeConstituency = {
   id: string;
   name: string;
   short: string;
+  x: number;
+  y: number;
 };
 
 export type HomeCandidate = {
@@ -199,11 +201,199 @@ function UpdateCollection({
   );
 }
 
+function CandidateAtlasMap({
+  boundarySourceUrl,
+  candidates,
+  constituencies,
+  onSelect,
+  selectedId,
+}: {
+  boundarySourceUrl: string;
+  candidates: readonly HomeCandidate[];
+  constituencies: readonly HomeConstituency[];
+  onSelect: (constituencyId: string) => void;
+  selectedId: string | null;
+}) {
+  const [anchorPositions, setAnchorPositions] = useState<Record<string, TerrainAnchorPosition>>({});
+  const candidatesByConstituency = new Map<string, HomeCandidate[]>();
+  candidates
+    .toSorted((left, right) => left.name.localeCompare(right.name, "en-GB"))
+    .forEach((candidate) => {
+      const areaCandidates = candidatesByConstituency.get(candidate.constituencyId) ?? [];
+      areaCandidates.push(candidate);
+      candidatesByConstituency.set(candidate.constituencyId, areaCandidates);
+    });
+
+  const selected = constituencies.find((constituency) => constituency.id === selectedId) ?? null;
+  const selectedCandidates = selected ? candidatesByConstituency.get(selected.id) ?? [] : [];
+  const terrainAnchors = constituencies.map((constituency) => ({
+    id: constituency.id,
+    x: constituency.x,
+    y: constituency.y,
+  }));
+
+  return (
+    <div className={styles.atlasMapStage}>
+      <h1 className={styles.visuallyHidden}>The People’s Isle — Your Isle, Your Future</h1>
+      <p className={styles.visuallyHidden}>
+        Your selected area is saved only on this device. No account, address or postcode is requested.
+      </p>
+      <div className={styles.atlasMapGuide} aria-hidden="true">
+        <strong>Choose an area</strong>
+        <span>Candidate cards open their evidence profiles</span>
+      </div>
+
+      <label className={styles.atlasAreaSelect}>
+        <span>Choose an area</span>
+        <select
+          onChange={(event) => {
+            if (event.target.value) onSelect(event.target.value);
+          }}
+          value={selectedId ?? ""}
+        >
+          <option value="">Select a constituency</option>
+          {constituencies.map((constituency) => (
+            <option key={constituency.id} value={constituency.id}>{constituency.name}</option>
+          ))}
+        </select>
+      </label>
+
+      <div className={styles.terrainFrame}>
+        <IslandTerrain
+          anchors={terrainAnchors}
+          onAnchorPositions={setAnchorPositions}
+          presentation="atlas"
+        />
+      </div>
+
+      <div
+        aria-label="Choose one Isle of Man constituency using representative points; boundaries are not shown"
+        className={styles.atlasHotspotLayer}
+        role="group"
+      >
+        {constituencies.map((constituency) => {
+          const areaCandidates = candidatesByConstituency.get(constituency.id) ?? [];
+          const isSelected = constituency.id === selectedId;
+          const anchorPosition = anchorPositions[constituency.id];
+          const profileLabel = `${areaCandidates.length} reviewed candidate profile${areaCandidates.length === 1 ? "" : "s"}`;
+          const clusterClass = [
+            styles.atlasMarker,
+            isSelected ? styles.atlasMarkerSelected : "",
+            !anchorPosition?.visible ? styles.atlasMarkerPending : "",
+          ].filter(Boolean).join(" ");
+
+          return (
+            <div
+              className={clusterClass}
+              data-constituency={constituency.id}
+              key={constituency.id}
+              style={{
+                left: `${anchorPosition?.left ?? 50}%`,
+                top: `${anchorPosition?.top ?? 50}%`,
+              }}
+            >
+              <i className={styles.atlasLeader} aria-hidden="true" />
+              <button
+                aria-label={`Choose ${constituency.name}, ${profileLabel}`}
+                aria-pressed={isSelected}
+                className={styles.atlasHotspot}
+                onClick={() => onSelect(constituency.id)}
+                type="button"
+              >
+                <span>{constituency.short}</span>
+                <strong>{constituency.name}</strong>
+              </button>
+
+              {areaCandidates.length ? (
+                <>
+                  {!isSelected ? (
+                    <div className={styles.atlasPortraitPipsDesktop}>
+                      {areaCandidates.map((candidate) => (
+                        <a
+                          aria-label={`Open evidence profile for ${candidate.name}, ${constituency.name}`}
+                          href={`/candidates/${candidate.slug}`}
+                          key={candidate.slug}
+                          onClick={() => onSelect(constituency.id)}
+                        >
+                          <span aria-hidden="true">{candidate.initials}</span>
+                          <strong>{candidate.name}</strong>
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className={styles.atlasPortraitPipsMobile} aria-hidden="true">
+                    {areaCandidates.map((candidate) => (
+                      <span key={candidate.slug}>{candidate.initials}</span>
+                    ))}
+                  </div>
+                  {isSelected ? (
+                    <div className={styles.atlasProfiles}>
+                      {areaCandidates.map((candidate, index) => (
+                        <a
+                          aria-label={`Open evidence profile for ${candidate.name}, ${constituency.name}`}
+                          className={styles.atlasProfileCard}
+                          href={`/candidates/${candidate.slug}`}
+                          key={candidate.slug}
+                          onClick={() => onSelect(constituency.id)}
+                          style={{ animationDelay: `${index * 240}ms` }}
+                        >
+                          <span aria-hidden="true">{candidate.initials}</span>
+                          <strong>{candidate.name}</strong>
+                          <small>Evidence profile ↗</small>
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <p className={styles.visuallyHidden} aria-live="polite">
+        {selected
+          ? `${selected.name} selected. ${selectedCandidates.length} reviewed candidate profile${selectedCandidates.length === 1 ? "" : "s"}.`
+          : "No constituency selected."}
+      </p>
+
+      {selected ? (
+        <div className={styles.atlasMobileSheet}>
+          <div>
+            <span>{selected.short}</span>
+            <strong>{selected.name}</strong>
+          </div>
+          {selectedCandidates.length ? (
+            <nav aria-label={`Reviewed candidate profiles for ${selected.name}`}>
+              {selectedCandidates.map((candidate) => (
+                <a href={`/candidates/${candidate.slug}`} key={candidate.slug}>
+                  <span aria-hidden="true">{candidate.initials}</span>
+                  <strong>{candidate.name}</strong>
+                </a>
+              ))}
+            </nav>
+          ) : (
+            <small>No reviewed candidate profile yet</small>
+          )}
+        </div>
+      ) : null}
+
+      <div className={styles.atlasMapKey}>
+        <span><i /> Reviewed profile</span>
+        <small>Representative points · boundaries not shown</small>
+        <a href={boundarySourceUrl} target="_blank" rel="noreferrer">Official source ↗</a>
+      </div>
+    </div>
+  );
+}
+
 export function HomeViewExperience({
+  boundarySourceUrl,
   candidates,
   constituencies,
   updates,
 }: {
+  boundarySourceUrl: string;
   candidates: readonly HomeCandidate[];
   constituencies: readonly HomeConstituency[];
   updates: readonly HomeUpdate[];
@@ -268,7 +458,7 @@ export function HomeViewExperience({
 
           <div className={selected ? styles.savedRegion : styles.savedRegionEmpty} aria-live="polite">
             <span>{selected ? "Area of interest" : "No area selected"}</span>
-            <strong>{selected?.name ?? "Choose one below"}</strong>
+            <strong>{selected?.name ?? "Choose on the map"}</strong>
             {selected ? (
               <button onClick={() => setSelectedConstituencyId(null)} type="button">Clear</button>
             ) : null}
@@ -284,56 +474,13 @@ export function HomeViewExperience({
           key="atlas"
           role="region"
         >
-          <div className={styles.atlasHero}>
-            <div className={styles.atlasIntro}>
-              <p>The Living Atlas</p>
-              <h1>Your Isle,<br /><em>Your Future</em></h1>
-              <span>
-                Start with the Island. Choose an area, meet its prospective candidates and follow every reviewed update back to its source.
-              </span>
-              <div className={styles.heroLinks}>
-                <a href="/compass">Try the private compass</a>
-                <a href="/latest">Open all reviewed updates</a>
-              </div>
-            </div>
-            <div className={styles.terrainFrame}>
-              <div className={styles.terrainLabel}>
-                <span>Actual elevation data</span>
-                <strong>Drag the Island to explore</strong>
-              </div>
-              <IslandTerrain />
-            </div>
-          </div>
-
-          <div className={styles.atlasPicker}>
-            <RegionChooser
-              constituencies={constituencies}
-              onSelect={setSelectedConstituencyId}
-              selectedId={selectedConstituencyId}
-            />
-          </div>
-
-          <div className={styles.selectedArea}>
-            <div className={styles.sectionHeading}>
-              <div>
-                <span>{selected ? "Your selected area" : "Begin with a place"}</span>
-                <h2>{selected?.name ?? "Choose a constituency above"}</h2>
-              </div>
-              <p>
-                {selected
-                  ? "Reviewed profiles are shown equally and alphabetically."
-                  : "Nothing is inferred from your device or location."}
-              </p>
-            </div>
-            {selected ? (
-              <CandidateCollection candidates={selectedCandidates} emptyArea={selected.name} />
-            ) : (
-              <div className={styles.emptyPrompt}>
-                <strong>One choice changes the whole view</strong>
-                <p>Your area will stay selected when you switch to the Election Desk or return later.</p>
-              </div>
-            )}
-          </div>
+          <CandidateAtlasMap
+            boundarySourceUrl={boundarySourceUrl}
+            candidates={candidates}
+            constituencies={constituencies}
+            onSelect={setSelectedConstituencyId}
+            selectedId={selectedConstituencyId}
+          />
 
           <div className={styles.atlasNews}>
             <div className={styles.sectionHeading}>
