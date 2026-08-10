@@ -1,13 +1,13 @@
 .experience {
-  background: #f6f0e4;
-  color: #123238;
+  background: #f4f0e7;
+  color: #183638;
   min-height: 700px;
 }
 
 .switchBar {
-  background: rgba(255, 253, 247, .96);
-  border-bottom: 1px solid rgba(18, 50, 56, .14);
-  box-shadow: 0 8px 28px rgba(18, 50, 56, .07);
+  background: rgba(244, 240, 231, .97);
+  border-bottom: 1px solid rgba(24, 54, 56, .14);
+  box-shadow: 0 6px 22px rgba(14, 41, 45, .06);
   position: sticky;
   top: 78px;
   z-index: 25;
@@ -24,9 +24,9 @@
 }
 
 .viewSwitch {
-  background: #e8e1d3;
-  border: 1px solid rgba(18, 50, 56, .16);
-  border-radius: 18px;
+  background: #e5dfd3;
+  border: 1px solid rgba(24, 54, 56, .16);
+  border-radius: 12px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   isolation: isolate;
@@ -36,9 +36,9 @@
 }
 
 .switchThumb {
-  background: #123238;
-  border-radius: 14px;
-  box-shadow: 0 6px 18px rgba(18, 50, 56, .18);
+  background: #183638;
+  border-radius: 8px;
+  box-shadow: 0 5px 14px rgba(14, 41, 45, .14);
   inset: 4px 50% 4px 4px;
   position: absolute;
   transition: transform 320ms cubic-bezier(.22, .8, .22, 1);
@@ -53,12 +53,12 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 14px;
+  border-radius: 8px;
   color: #526a6d;
   cursor: pointer;
   display: grid;
-  gap: 0 9px;
-  grid-template-columns: 28px 1fr;
+  gap: 1px;
+  grid-template-columns: 1fr;
   padding: 9px 13px;
   text-align: left;
 }
@@ -67,21 +67,10 @@
   color: #fffdf7;
 }
 
-.viewSwitch button > span {
-  align-items: center;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  display: inline-flex;
-  font-size: 10px;
-  font-weight: 900;
-  grid-row: 1 / 3;
-  height: 26px;
-  justify-content: center;
-  width: 26px;
-}
-
 .viewSwitch strong {
-  font-size: 13px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .viewSwitch small {
@@ -118,7 +107,7 @@
 .savedRegion button {
   background: transparent;
   border: 1px solid rgba(18, 50, 56, .26);
-  border-radius: 999px;
+  border-radius: 7px;
   color: #123238;
   cursor: pointer;
   font-size: 10px;
@@ -135,8 +124,8 @@
 
 .atlasView {
   background:
-    radial-gradient(circle at 75% 16%, rgba(255, 255, 255, .68), transparent 23%),
-    linear-gradient(180deg, #abd9d0 0 680px, #f6f0e4 680px);
+    radial-gradient(circle at 75% 16%, rgba(255, 255, 255, .52), transparent 24%),
+    linear-gradient(180deg, #bad1cb 0 680px, #f4f0e7 680px);
 }
 
 .atlasHero {
@@ -176,7 +165,7 @@
 }
 
 .atlasIntro h1 em {
-  color: #cf4e38;
+  color: #a9513f;
   font-weight: 500;
 }
 
@@ -280,7 +269,7 @@
 .regionChooserCompact {
   background: #fffdf7;
   border: 1px solid rgba(18, 50, 56, .15);
-  border-radius: 24px;
+  border-radius: 14px;
   box-shadow: 0 16px 46px rgba(18, 50, 56, .08);
   padding: 24px;
 }
@@ -325,7 +314,7 @@
   align-items: center;
   background: #f4eee2;
   border: 1px solid transparent;
-  border-radius: 13px;
+  border-radius: 8px;
   color: #123238;
   cursor: pointer;
   display: grid;
@@ -345,7 +334,7 @@
 .regionGrid button > span {
   align-items: center;
   background: #fffdf7;
-  border-radius: 9px;
+  border-radius: 6px;
   display: flex;
   font-size: 9px;
   font-weight: 900;
@@ -365,7 +354,7 @@
 }
 
 .regionGrid .regionActive > span {
-  background: #f0cd68;
+  background: #d5bd80;
   color: #123238;
 }
 
@@ -420,7 +409,7 @@
 .candidateCard {
   background: #fffdf7;
   border: 1px solid rgba(18, 50, 56, .16);
-  border-radius: 20px;
+  border-radius: 12px;
   display: grid;
   grid-template-columns: 120px 1fr;
   min-height: 260px;
@@ -435,7 +424,7 @@
 
 .candidateAvatar {
   align-items: center;
-  background: #abd9d0;
+  background: #bad1cb;
   display: flex;
   justify-content: center;
   padding: 13px;
@@ -443,7 +432,7 @@
 
 .playerPortrait {
   aspect-ratio: 4 / 5;
-  background: #f0cd68;
+  background: #d5bd80;
   display: grid;
   overflow: hidden;
   place-items: center;
@@ -463,7 +452,7 @@
   align-items: center;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, .62), transparent 52%),
-    #f0cd68;
+    #d5bd80;
   color: #123238;
   display: flex;
   font-family: Georgia, "Times New Roman", serif;
@@ -476,7 +465,7 @@
 
 .candidatePortraitFrame {
   border: 1px solid rgba(18, 50, 56, .28);
-  border-radius: 13px;
+  border-radius: 8px;
   max-height: 220px;
 }
 
@@ -529,7 +518,7 @@
 
 .candidateCopy li {
   background: #f4eee2;
-  border-radius: 999px;
+  border-radius: 5px;
   font-size: 8px;
   font-weight: 750;
   padding: 6px 8px;
@@ -544,8 +533,8 @@
 .emptyPrompt,
 .noLocalDeskUpdate {
   background: #fffdf7;
-  border: 1px dashed rgba(18, 50, 56, .25);
-  border-radius: 18px;
+  border: 1px solid rgba(18, 50, 56, .18);
+  border-radius: 10px;
   display: flex;
   gap: 14px;
   padding: 24px;
@@ -553,7 +542,7 @@
 
 .emptyPanel > span {
   align-items: center;
-  background: #f0cd68;
+  background: #d5bd80;
   border-radius: 50%;
   display: flex;
   flex: 0 0 36px;
@@ -592,7 +581,7 @@
 .updateCard {
   background: #fffdf7;
   border: 1px solid rgba(18, 50, 56, .16);
-  border-radius: 18px;
+  border-radius: 10px;
   display: flex;
   flex-direction: column;
   padding: 20px;
@@ -643,7 +632,7 @@
 .islandWideRibbon {
   align-items: center;
   background: #123238;
-  border-radius: 16px;
+  border-radius: 9px;
   color: #fffdf7;
   display: grid;
   gap: 12px;
@@ -653,8 +642,8 @@
 }
 
 .islandWideRibbon span {
-  background: #f0cd68;
-  border-radius: 999px;
+  background: #d5bd80;
+  border-radius: 5px;
   color: #123238;
   font-size: 8px;
   font-weight: 900;
@@ -672,7 +661,7 @@
 }
 
 .deskView {
-  background: #f6f0e4;
+  background: #f4f0e7;
   padding-bottom: 70px;
 }
 
@@ -689,7 +678,7 @@
 }
 
 .deskMasthead p {
-  color: #f0cd68;
+  color: #d5bd80;
 }
 
 .deskMasthead h1 {
@@ -709,7 +698,7 @@
 
 .deskStatus span {
   align-items: center;
-  color: #f0cd68;
+  color: #d5bd80;
   display: flex;
   font-size: 9px;
   font-weight: 900;
@@ -719,7 +708,7 @@
 }
 
 .deskStatus span i {
-  background: #f0cd68;
+  background: #d5bd80;
   border-radius: 50%;
   height: 7px;
   width: 7px;
@@ -747,7 +736,7 @@
 }
 
 .regionChooserCompact {
-  border-radius: 18px;
+  border-radius: 12px;
   box-shadow: none;
   padding: 18px;
 }
@@ -781,7 +770,7 @@
 
 .issueLinks {
   background: #e9dfca;
-  border-radius: 18px;
+  border-radius: 10px;
   display: grid;
   margin-top: 14px;
   padding: 18px;
@@ -820,7 +809,7 @@
 
 .noLocalDeskUpdate {
   align-items: baseline;
-  background: #fff8d7;
+  background: #f1ead9;
   display: grid;
   gap: 5px;
   margin: 16px 0;
@@ -848,7 +837,7 @@
 }
 
 .deskIndex {
-  color: #cf4e38;
+  color: #a9513f;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 24px;
 }
@@ -916,10 +905,9 @@
 
 .atlasMapStage {
   background:
-    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, .72), transparent 32%),
-    radial-gradient(circle at 16% 18%, rgba(240, 205, 104, .28), transparent 17%),
-    linear-gradient(145deg, #9fd7ce, #c3e3d8 58%, #e4ddc8);
-  border-bottom: 1px solid rgba(18, 50, 56, .16);
+    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, .58), transparent 33%),
+    linear-gradient(145deg, #a9c7c0, #c4d8d2 58%, #ded8ca);
+  border-bottom: 1px solid rgba(24, 54, 56, .16);
   height: clamp(650px, 78vh, 820px);
   min-height: 650px;
   overflow: hidden;
@@ -951,15 +939,15 @@
 
 .atlasMapGuide {
   background: rgba(255, 253, 247, .9);
-  border: 1px solid rgba(18, 50, 56, .18);
-  border-radius: 15px;
-  box-shadow: 3px 4px 0 rgba(18, 50, 56, .9);
+  border: 1px solid rgba(24, 54, 56, .18);
+  border-radius: 9px;
+  box-shadow: 0 8px 22px rgba(14, 41, 45, .12);
   display: grid;
   left: 28px;
   padding: 10px 13px;
   position: absolute;
   top: 24px;
-  transform: rotate(-1deg);
+  transform: none;
   z-index: 18;
 }
 
@@ -1004,7 +992,7 @@
   bottom: 20px;
   left: 28px;
   max-width: 250px;
-  transform: rotate(-1deg);
+  transform: none;
 }
 
 .atlasHotspotLayer {
@@ -1099,10 +1087,10 @@
 .atlasHotspot {
   align-items: center;
   background: #fffdf7;
-  border: 2px solid #123238;
+  border: 1px solid #183638;
   border-radius: 50%;
-  box-shadow: 3px 4px 0 #123238;
-  color: #123238;
+  box-shadow: 0 6px 16px rgba(14, 41, 45, .18);
+  color: #183638;
   cursor: pointer;
   display: flex;
   height: 46px;
@@ -1140,9 +1128,9 @@
 .atlasHotspot:hover,
 .atlasHotspot:focus-visible,
 .atlasMarkerSelected .atlasHotspot {
-  background: #cf4e38;
+  background: #a9513f;
   color: #fffdf7;
-  scale: 1.08;
+  scale: 1.04;
 }
 
 .atlasHotspot:hover > strong,
@@ -1171,10 +1159,10 @@
 
 .atlasPlayerCard {
   background: rgba(255, 253, 247, .96);
-  border: 2px solid #123238;
-  border-radius: 10px;
-  box-shadow: 3px 4px 0 #123238;
-  color: #123238;
+  border: 1px solid rgba(24, 54, 56, .28);
+  border-radius: 7px;
+  box-shadow: 0 8px 20px rgba(14, 41, 45, .16);
+  color: #183638;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1185,9 +1173,10 @@
 
 .atlasPlayerCard:hover,
 .atlasPlayerCard:focus-visible {
-  box-shadow: 2px 3px 0 #123238;
-  scale: 1.035;
-  translate: 1px 1px;
+  border-color: #2f6f6b;
+  box-shadow: 0 12px 25px rgba(14, 41, 45, .2);
+  scale: 1.02;
+  translate: 0 -2px;
 }
 
 .atlasPlayerCard .playerPortrait {
@@ -1200,7 +1189,7 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 5px 5px 6px;
+  padding: 6px;
 }
 
 .atlasPlayerCopy strong {
@@ -1210,14 +1199,14 @@
 }
 
 .atlasPlayerCopy small {
-  color: #0d6970;
-  font-size: 7.5px;
-  font-weight: 850;
+  color: #526669;
+  font-size: 10px;
+  font-weight: 700;
   line-height: 1.15;
 }
 
 .atlasMarkerSelected .atlasProfiles {
-  scale: 1.02;
+  scale: 1;
 }
 
 .atlasPlayerCardSelected {
@@ -1344,7 +1333,7 @@
   align-items: center;
   background: rgba(255, 253, 247, .82);
   border: 1px solid rgba(18, 50, 56, .14);
-  border-radius: 999px;
+  border-radius: 8px;
   bottom: 22px;
   display: flex;
   font-size: 8px;
@@ -1363,7 +1352,7 @@
 }
 
 .atlasMapKey i {
-  background: #f0cd68;
+  background: #d5bd80;
   border: 1px solid #123238;
   border-radius: 50%;
   height: 9px;
@@ -1443,11 +1432,29 @@
   .savedRegionEmpty {
     min-width: 0;
   }
+
+  .atlasMapStage {
+    height: 720px;
+  }
+
+  .atlasPlayerDeck {
+    max-width: 170px;
+  }
+
+  .atlasPlayerDeck .atlasPlayerCardMini:nth-child(n + 4) {
+    display: none;
+  }
+
+  .atlasProfiles {
+    scale: .9;
+    transform-origin: center bottom;
+  }
 }
 
 @media (max-width: 720px) {
   .switchBar {
     position: relative;
+    top: auto;
   }
 
   .switchInner {
@@ -1460,13 +1467,8 @@
   }
 
   .viewSwitch button {
-    grid-template-columns: 24px 1fr;
+    grid-template-columns: 1fr;
     padding: 8px;
-  }
-
-  .viewSwitch button > span {
-    height: 22px;
-    width: 22px;
   }
 
   .viewSwitch small {
@@ -1479,7 +1481,7 @@
   }
 
   .atlasView {
-    background: linear-gradient(180deg, #abd9d0 0 830px, #f6f0e4 830px);
+    background: linear-gradient(180deg, #bad1cb 0 830px, #f4f0e7 830px);
   }
 
   .atlasMapStage {
@@ -1522,10 +1524,10 @@
   .atlasAreaSelect select {
     appearance: none;
     background: #fffdf7;
-    border: 2px solid #123238;
-    border-radius: 12px;
-    box-shadow: 3px 4px 0 #123238;
-    color: #123238;
+    border: 1px solid rgba(24, 54, 56, .28);
+    border-radius: 8px;
+    box-shadow: 0 7px 18px rgba(14, 41, 45, .14);
+    color: #183638;
     font: 750 12px ui-sans-serif, system-ui, sans-serif;
     min-height: 44px;
     padding: 8px 34px 8px 11px;
@@ -1583,9 +1585,9 @@
 
   .atlasPlayerPreview {
     background: #fffdf7;
-    border: 1px solid #123238;
+    border: 1px solid rgba(24, 54, 56, .28);
     border-radius: 5px;
-    box-shadow: 1px 2px 0 #123238;
+    box-shadow: 0 3px 8px rgba(14, 41, 45, .14);
     display: block;
     height: 34px;
     overflow: hidden;
@@ -1606,10 +1608,10 @@
 
   .atlasMobileSheet {
     background: rgba(255, 253, 247, .96);
-    border: 2px solid #123238;
-    border-radius: 17px;
+    border: 1px solid rgba(24, 54, 56, .24);
+    border-radius: 10px;
     bottom: 14px;
-    box-shadow: 4px 5px 0 #123238;
+    box-shadow: 0 14px 34px rgba(14, 41, 45, .18);
     display: grid;
     gap: 10px;
     left: 14px;
@@ -1627,8 +1629,8 @@
 
   .atlasMobileSheet > div span {
     align-items: center;
-    background: #cf4e38;
-    border-radius: 8px;
+    background: #a9513f;
+    border-radius: 6px;
     color: #fffdf7;
     display: flex;
     font-size: 8px;
@@ -1739,7 +1741,7 @@
 
   .regionChooser,
   .regionChooserCompact {
-    border-radius: 18px;
+    border-radius: 12px;
     padding: 16px;
   }
 

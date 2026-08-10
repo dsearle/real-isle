@@ -497,7 +497,6 @@ export function HomeViewExperience({
               onClick={() => selectView("atlas")}
               type="button"
             >
-              <span>A</span>
               <strong>Living Atlas</strong>
               <small>Explore by place</small>
             </button>
@@ -507,7 +506,6 @@ export function HomeViewExperience({
               onClick={() => selectView("desk")}
               type="button"
             >
-              <span>B</span>
               <strong>Election Desk</strong>
               <small>Explore by update</small>
             </button>

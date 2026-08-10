@@ -45,7 +45,7 @@
   align-items: center;
   background: #fffdf7;
   border: 1px solid rgba(18, 50, 56, .2);
-  border-radius: 16px;
+  border-radius: 10px;
   display: flex;
   flex: 0 0 auto;
   gap: 11px;
@@ -54,9 +54,9 @@
 
 .reviewerIdentity > span {
   align-items: center;
-  background: #f0cd68;
-  border: 1px solid #123238;
-  border-radius: 11px;
+  background: #e8dfca;
+  border: 1px solid rgba(18, 50, 56, .22);
+  border-radius: 7px;
   display: flex;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 14px;
@@ -75,7 +75,7 @@
 
 .tabBar {
   background: #123238;
-  border-radius: 18px;
+  border-radius: 10px;
   display: flex;
   gap: 5px;
   margin-bottom: 24px;
@@ -90,7 +90,7 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 13px;
+  border-radius: 7px;
   color: rgba(255, 253, 247, .68);
   cursor: pointer;
   display: flex;
@@ -128,7 +128,7 @@
   background:
     radial-gradient(circle at 85% 15%, rgba(240, 205, 104, .24), transparent 25%),
     #123238;
-  border-radius: 25px;
+  border-radius: 14px;
   color: #fffdf7;
   display: grid;
   gap: 60px;
@@ -162,7 +162,7 @@
 .auditSeal {
   background: rgba(255, 253, 247, .09);
   border: 1px solid rgba(255, 255, 255, .2);
-  border-radius: 20px;
+  border-radius: 10px;
   display: grid;
   gap: 5px;
   padding: 20px;
@@ -181,16 +181,17 @@
 .statGrid > div {
   background: #fffdf7;
   border: 1px solid rgba(18, 50, 56, .16);
-  border-radius: 16px;
+  border-radius: 10px;
+  border-top: 3px solid #6f8f89;
   display: grid;
   min-height: 118px;
   padding: 17px;
 }
 
-.statGrid > div:nth-child(4n + 1) { background: #fff2bf; }
-.statGrid > div:nth-child(4n + 2) { background: #dceee8; }
-.statGrid > div:nth-child(4n + 3) { background: #ffd9cf; }
-.statGrid > div:nth-child(4n + 4) { background: #dfeaff; }
+.statGrid > div:nth-child(4n + 1) { background: #fffdf7; border-top-color: #c2a35a; }
+.statGrid > div:nth-child(4n + 2) { background: #fffdf7; border-top-color: #5c8b80; }
+.statGrid > div:nth-child(4n + 3) { background: #fffdf7; border-top-color: #b56b58; }
+.statGrid > div:nth-child(4n + 4) { background: #fffdf7; border-top-color: #7b8f9b; }
 .statGrid strong { font-family: Georgia, "Times New Roman", serif; font-size: 34px; font-weight: 500; }
 .statGrid span { font-size: 11px; font-weight: 850; text-transform: uppercase; }
 .statGrid small { align-self: end; color: #5c7073; font-size: 10px; margin-top: 9px; }
@@ -201,7 +202,7 @@
 .fullRunList {
   background: #fffdf7;
   border: 1px solid rgba(18, 50, 56, .16);
-  border-radius: 22px;
+  border-radius: 12px;
   padding: 28px;
 }
 
@@ -232,7 +233,7 @@
 }
 
 .pipelineRail li {
-  border-top: 2px solid #123238;
+  border-top: 1px solid #607a7b;
   display: grid;
   gap: 4px;
   padding: 19px 14px 0 0;
@@ -240,8 +241,8 @@
 }
 
 .pipelineRail li::before {
-  background: #f0cd68;
-  border: 2px solid #123238;
+  background: #c2a35a;
+  border: 1px solid #123238;
   border-radius: 50%;
   content: "";
   height: 12px;
@@ -272,7 +273,7 @@
 .attentionPanel li {
   align-items: center;
   background: #f4eee2;
-  border-radius: 13px;
+  border-radius: 8px;
   display: grid;
   gap: 11px;
   grid-template-columns: 42px 1fr;
@@ -281,8 +282,8 @@
 
 .attentionPanel li strong {
   align-items: center;
-  background: #ffd1c5;
-  border-radius: 9px;
+  background: #eaded2;
+  border-radius: 6px;
   display: flex;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 19px;
@@ -304,7 +305,7 @@
   align-items: end;
   background: #fffdf7;
   border: 1px solid rgba(18, 50, 56, .16);
-  border-radius: 22px;
+  border-radius: 12px;
   display: grid;
   gap: 36px;
   grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr);
@@ -325,7 +326,7 @@
 .filterBar {
   align-items: end;
   background: #123238;
-  border-radius: 18px;
+  border-radius: 10px;
   color: #fffdf7;
   display: grid;
   gap: 12px;
@@ -335,7 +336,7 @@
 
 .filterBar label { display: grid; gap: 5px; }
 .filterBar label > span { color: #f0cd68; font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
-.filterBar input, .filterBar select { background: #fffdf7; border: 0; border-radius: 11px; color: #123238; font: 700 11px ui-sans-serif, system-ui, sans-serif; min-height: 42px; padding: 9px 11px; width: 100%; }
+.filterBar input, .filterBar select { background: #fffdf7; border: 0; border-radius: 7px; color: #123238; font: 700 11px ui-sans-serif, system-ui, sans-serif; min-height: 42px; padding: 9px 11px; width: 100%; }
 .filterBar > strong { font-size: 11px; padding: 13px 8px; white-space: nowrap; }
 
 .candidateCoverageGrid {
@@ -347,7 +348,7 @@
 .candidateCoverageCard {
   background: #fffdf7;
   border: 1px solid rgba(18, 50, 56, .18);
-  border-radius: 18px;
+  border-radius: 11px;
   display: grid;
   grid-template-columns: 116px minmax(0, 1fr);
   min-height: 360px;
@@ -392,7 +393,7 @@
 .cardFooter a, .evidenceInboxCard > a { color: #0d6970; font-size: 9px; font-weight: 850; }
 
 .evidenceInboxGrid { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.evidenceInboxCard { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .17); border-radius: 18px; display: flex; flex-direction: column; min-height: 285px; padding: 19px; }
+.evidenceInboxCard { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .17); border-radius: 11px; display: flex; flex-direction: column; min-height: 285px; padding: 19px; }
 .inboxSource { color: #0d6970; font-size: 9px; font-weight: 800; margin: 13px 0 8px; text-transform: uppercase; }
 .evidenceInboxCard h3 { font-family: Georgia, "Times New Roman", serif; font-size: 21px; font-weight: 500; line-height: 1.15; margin: 0 0 10px; }
 .evidenceInboxCard > p:not(.inboxSource) { color: #5c7174; font-size: 10px; line-height: 1.55; margin: 0 0 14px; }
@@ -401,12 +402,12 @@
 .evidenceMeta code { font-size: 8px; }
 
 .transcriptModel { display: grid; gap: 8px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.transcriptModel article { background: #123238; border-radius: 15px; color: #fffdf7; display: grid; min-height: 150px; padding: 16px; }
+.transcriptModel article { background: #123238; border-radius: 9px; color: #fffdf7; display: grid; min-height: 150px; padding: 16px; }
 .transcriptModel b { color: #f0cd68; font-family: Georgia, "Times New Roman", serif; font-size: 22px; }
 .transcriptModel strong { align-self: end; font-family: Georgia, "Times New Roman", serif; font-size: 17px; }
 .transcriptModel span { color: rgba(255, 253, 247, .64); font-size: 9px; line-height: 1.45; margin-top: 5px; }
 .transcriptGrid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.transcriptCard { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .18); border-radius: 20px; padding: 21px; }
+.transcriptCard { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .18); border-radius: 11px; padding: 21px; }
 .transcriptCardHeader { align-items: center; display: flex; gap: 9px; justify-content: space-between; }
 .platformBadge { background: #123238; border-radius: 999px; color: #fffdf7; font-size: 9px; font-weight: 850; padding: 7px 10px; text-transform: uppercase; }
 .transcriptCard > p:first-of-type { color: #0d6970; font-size: 9px; font-weight: 850; margin: 18px 0 4px; text-transform: uppercase; }
@@ -422,7 +423,7 @@
 .accessNote, .errorNote { background: #fff3c9; border-radius: 11px; color: #566c6f; font-size: 9px; line-height: 1.5; margin: 14px 0 0; padding: 11px; }
 .errorNote { background: #ffd8ce; color: #813725; }
 
-.sourceTableWrap { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .16); border-radius: 20px; overflow-x: auto; }
+.sourceTableWrap { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .16); border-radius: 11px; overflow-x: auto; }
 .sourceTable { border-collapse: collapse; font-size: 10px; width: 100%; }
 .sourceTable th { background: #123238; color: #fffdf7; font-size: 9px; letter-spacing: .08em; padding: 13px 15px; text-align: left; text-transform: uppercase; }
 .sourceTable td { border-top: 1px solid rgba(18, 50, 56, .12); color: #536a6d; min-width: 140px; padding: 14px 15px; vertical-align: top; }
@@ -447,8 +448,8 @@
 .emptyState,
 .unavailable {
   background: #fffdf7;
-  border: 1px dashed rgba(18, 50, 56, .32);
-  border-radius: 20px;
+  border: 1px solid rgba(18, 50, 56, .22);
+  border-radius: 11px;
   display: grid;
   gap: 7px;
   padding: 32px;

@@ -11,7 +11,7 @@
   align-items: center;
   background: #fffdf7;
   border: 1px solid rgba(18, 50, 56, 0.18);
-  border-radius: 18px;
+  border-radius: 10px;
   display: flex;
   justify-content: space-between;
   padding: 15px 17px;
@@ -40,7 +40,7 @@
 .contextBar a {
   background: #123238;
   border: 0;
-  border-radius: 999px;
+  border-radius: 7px;
   color: #fffdf7;
   cursor: pointer;
   font-size: 12px;
@@ -67,8 +67,8 @@
 
 .emptyState {
   background: #fffdf7;
-  border: 1px dashed rgba(18, 50, 56, 0.28);
-  border-radius: 18px;
+  border: 1px solid rgba(18, 50, 56, 0.2);
+  border-radius: 10px;
   margin-top: 16px;
   padding: 24px;
 }
