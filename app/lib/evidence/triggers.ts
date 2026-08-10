@@ -69,6 +69,14 @@ const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS reviews_no_delete
    BEFORE DELETE ON reviews
    BEGIN SELECT RAISE(ABORT, 'review decisions are immutable'); END`,
+  `DROP TRIGGER IF EXISTS reviews_source_item_version_guard`,
+  `DROP TRIGGER IF EXISTS reviews_source_item_candidate_assignment_guard`,
+  `DROP TRIGGER IF EXISTS source_item_version_entities_insert_guard`,
+  `DROP TRIGGER IF EXISTS source_item_version_entities_no_update`,
+  `DROP TRIGGER IF EXISTS source_item_version_entities_no_delete`,
+  `DROP TRIGGER IF EXISTS candidate_intelligence_invalidate_source_version_change`,
+  `DROP TRIGGER IF EXISTS candidate_intelligence_revision_insert_guard`,
+  `DROP TRIGGER IF EXISTS candidate_intelligence_revision_update_guard`,
   sourceItemVersionReviewGuardSql,
   sourceItemCandidateAssignmentReviewGuardSql,
   sourceItemVersionEntityInsertGuardSql,

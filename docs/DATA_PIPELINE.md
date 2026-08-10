@@ -97,6 +97,14 @@ Candidate projections are also closed when their review audit event is written;
 additional candidates cannot be attached later under an already completed
 decision without a new audited editorial cycle.
 
+Sites applies table and index migrations during deployment. The current Sites
+migration runner does not accept SQLite trigger bodies, so every live read/write
+entry point installs or replaces the integrity triggers in one atomic D1 batch
+before it can seed, ingest, review or expose operational state. Ingestion calls
+this guard before its first database write; the review service and founder
+dashboard do the same. This keeps upgraded and newly created databases on the
+same trigger definitions without leaving a write path unguarded.
+
 ## Candidate registry and portraits
 
 The Manx Radio 2026 candidate directory is monitored as a structured HTML

@@ -18,6 +18,7 @@ import { parseFeed, type NormalizedFeedItem } from "./feed";
 import { deterministicId, randomId, sha256Hex, stableJson } from "./integrity";
 import { fetchBounded, type BoundedResponse } from "./network";
 import { seedEvidenceReferenceData } from "./seed";
+import { ensureEvidenceTriggers } from "./triggers";
 
 const MAX_FEED_BYTES = 2 * 1024 * 1024;
 const MAX_ITEMS_PER_FEED = 12;
@@ -2525,6 +2526,7 @@ export async function runEvidenceIngestion(
   bindings: EvidenceBindings,
   command: IngestionCommand,
 ): Promise<IngestionResult> {
+  await ensureEvidenceTriggers(bindings.DB);
   await seedEvidenceReferenceData(bindings.DB);
   const allowedSourceIds = new Set(command.sourceIds ?? monitoredSources.map((source) => source.id));
   const limit = Math.max(1, Math.min(command.limit ?? 2, 6));
