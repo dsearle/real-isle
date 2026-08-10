@@ -13,6 +13,7 @@ const MAXIMUM_BODY_LENGTH = 4_096;
 const CONTENT_HASH = /^[0-9a-f]{64}$/;
 const ITEM_ID = /^item_[0-9a-f]{32}$/;
 const VERSION_ID = /^itemversion_[0-9a-f]{32}$/;
+const CANDIDACY_ID = /^[a-z0-9][a-z0-9:-]{0,99}$/;
 
 function json(value: unknown, status = 200) {
   return Response.json(value, {
@@ -71,6 +72,9 @@ export async function POST(request: Request) {
   const expectedVersionId = body.expectedVersionId;
   const expectedContentHash = body.expectedContentHash;
   const rationale = body.rationale;
+  const candidateIds = body.candidateIds;
+  const candidateSuggestionFingerprint = body.candidateSuggestionFingerprint;
+  const reviewKind = body.reviewKind;
   if (decision !== "approved" && decision !== "rejected") {
     return json({ error: "Choose approve or reject." }, 400);
   }
@@ -86,14 +90,37 @@ export async function POST(request: Request) {
   if (typeof rationale !== "string") {
     return json({ error: "The review note is invalid." }, 400);
   }
+  if (reviewKind !== "source-version" && reviewKind !== "candidate-assignment") {
+    return json({ error: "The review workflow is invalid." }, 400);
+  }
+  if (
+    typeof candidateSuggestionFingerprint !== "string"
+    || !CONTENT_HASH.test(candidateSuggestionFingerprint)
+  ) {
+    return json({ error: "The candidate suggestion set is stale or invalid." }, 400);
+  }
+  if (
+    !Array.isArray(candidateIds) ||
+    candidateIds.length > 20 ||
+    candidateIds.some((candidateId) => typeof candidateId !== "string" || !CANDIDACY_ID.test(candidateId))
+  ) {
+    return json({ error: "The candidate dossier selection is invalid." }, 400);
+  }
+  const normalizedCandidateIds = [...new Set(candidateIds)].sort();
+  if (decision === "rejected" && normalizedCandidateIds.length > 0) {
+    return json({ error: "Rejected evidence cannot be assigned to a candidate dossier." }, 400);
+  }
 
   try {
     const receipt = await reviewSourceItemVersion(getEvidenceBindings().DB, {
       decision,
+      candidateIds: normalizedCandidateIds,
+      candidateSuggestionFingerprint,
       expectedContentHash,
       expectedVersionId,
       itemId,
       rationale,
+      reviewKind,
       reviewerId: access.user.userId,
     });
     return json({ receipt });

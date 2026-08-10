@@ -90,6 +90,7 @@ type SnapshotRow = {
 
 type CandidateDirectoryState = {
   candidacy_id: string;
+  current_directory_version_id: string | null;
   current_profile_observation_id: string | null;
   current_profile_payload: string | null;
   current_profile_payload_hash: string | null;
@@ -102,6 +103,7 @@ type CandidateDirectoryState = {
 type CandidateProfileDue = {
   candidacy_id: string;
   current_profile_payload_hash: string | null;
+  current_source_item_version_id: string | null;
   full_name: string;
   profile_url: string;
   slug: string;
@@ -595,12 +597,15 @@ async function processFeedItem(input: {
   const snapshotId = input.feedSnapshotId;
   const payload = feedItemPayload(input.item, existing);
   const payloadHash = await sha256Hex(payload);
-  const versionId = await deterministicId("itemversion", resolvedItemId, payloadHash);
   const outcome = !existing
     ? "new"
-    : existing.content_hash === payloadHash
+    : existing.content_hash === payloadHash && existing.latest_version_id
       ? "unchanged"
       : "changed";
+  const versionId =
+    outcome === "unchanged" && existing?.latest_version_id
+      ? existing.latest_version_id
+      : await deterministicId("itemversion", resolvedItemId, payloadHash, snapshotId);
   const observationStatement = await runItemStatement({
     db,
     itemId: resolvedItemId,
@@ -647,7 +652,7 @@ async function processFeedItem(input: {
             id, source_item_id, ingestion_run_id, snapshot_id, observed_at,
             payload, payload_hash, parser_version
           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'feed-v1')
-          ON CONFLICT(source_item_id, payload_hash) DO NOTHING`,
+          ON CONFLICT(id) DO NOTHING`,
         )
         .bind(versionId, resolvedItemId, input.runId, snapshotId, now, payload, payloadHash),
       db
@@ -1146,6 +1151,19 @@ async function buildCandidateDirectoryStatements(input: {
       `SELECT profiles.slug, profiles.candidacy_id, profiles.current_profile_observation_id,
               candidacies.declaration_status,
               observations.payload_hash AS directory_payload_hash,
+              (
+                SELECT versions.id
+                FROM source_item_versions versions
+                WHERE versions.source_item_id = observations.source_item_id
+                  AND versions.payload_hash = observations.payload_hash
+                  AND versions.parser_version = 'candidate-directory-v1'
+                  AND versions.observed_at <= observations.observed_at
+                ORDER BY
+                  CASE WHEN versions.snapshot_id = observations.snapshot_id THEN 0 ELSE 1 END,
+                  versions.observed_at DESC,
+                  versions.created_at DESC
+                LIMIT 1
+              ) AS current_directory_version_id,
               profile_observations.payload AS current_profile_payload,
               profile_observations.payload_hash AS current_profile_payload_hash,
               profile_observations.snapshot_id AS current_profile_snapshot_id
@@ -1173,7 +1191,8 @@ async function buildCandidateDirectoryStatements(input: {
     const candidacyId = `${election.id}:${entry.slug}`;
     const externalId = `candidate:${entry.slug}`;
     const profileUrlHash = await sha256Hex(entry.profileUrl);
-    const itemId = itemsByExternalId.get(externalId)?.id ??
+    const existingItem = itemsByExternalId.get(externalId);
+    const itemId = existingItem?.id ??
       (await deterministicId("item", input.source.id, externalId));
     const payload = stableJson({
       candidate: {
@@ -1194,7 +1213,6 @@ async function buildCandidateDirectoryStatements(input: {
       sourceId: input.source.id,
     });
     const payloadHash = await sha256Hex(payload);
-    const versionId = await deterministicId("itemversion", itemId, payloadHash);
     const observationId = await deterministicId(
       "candidate-observation",
       candidacyId,
@@ -1205,9 +1223,7 @@ async function buildCandidateDirectoryStatements(input: {
     const previousHash = profileState?.directory_payload_hash;
     const hasParsedProfile = Boolean(profileState?.current_profile_observation_id);
     const summary = `Listed by ${input.source.name} under ${entry.constituencyName}; official nomination has not yet been verified.`;
-    const profileVersionId = profileState?.current_profile_payload_hash
-      ? await deterministicId("itemversion", itemId, profileState.current_profile_payload_hash)
-      : null;
+    const profileVersionId = hasParsedProfile ? existingItem?.latest_version_id ?? null : null;
     let profileSummary = summary;
     if (profileState?.current_profile_payload) {
       try {
@@ -1226,9 +1242,15 @@ async function buildCandidateDirectoryStatements(input: {
     }
     const outcome = !previousHash
       ? "new"
-      : previousHash !== payloadHash || profileState?.declaration_status === "source-removed"
+      : previousHash !== payloadHash ||
+          profileState?.declaration_status === "source-removed" ||
+          !profileState.current_directory_version_id
         ? "changed"
         : "unchanged";
+    const versionId =
+      outcome === "unchanged" && profileState?.current_directory_version_id
+        ? profileState.current_directory_version_id
+        : await deterministicId("itemversion", itemId, payloadHash, input.snapshotId);
     if (outcome === "new") counts.inserted += 1;
     else if (outcome === "changed") counts.changed += 1;
     else counts.unchanged += 1;
@@ -1330,7 +1352,7 @@ async function buildCandidateDirectoryStatements(input: {
             id, source_item_id, ingestion_run_id, snapshot_id, observed_at,
             payload, payload_hash, parser_version
           ) VALUES (?, ?, ?, ?, ?, ?, ?, 'candidate-directory-v1')
-          ON CONFLICT(source_item_id, payload_hash) DO NOTHING`,
+          ON CONFLICT(id) DO NOTHING`,
         )
         .bind(versionId, itemId, input.runId, input.snapshotId, observedAt, payload, payloadHash),
       input.db
@@ -1534,6 +1556,7 @@ async function dueCandidateProfile(db: D1Database, sourceId: string, now: string
     .prepare(
       `SELECT profiles.candidacy_id, profiles.slug, profiles.profile_url, people.full_name,
               items.id AS source_item_id,
+              items.latest_version_id AS current_source_item_version_id,
               observations.payload_hash AS current_profile_payload_hash
        FROM candidate_profiles profiles
        JOIN candidacies ON candidacies.id = profiles.candidacy_id
@@ -1601,14 +1624,24 @@ async function processCandidateProfile(input: {
     sourceId: input.source.id,
   });
   const payloadHash = await sha256Hex(payload);
-  const versionId = await deterministicId("itemversion", input.due.source_item_id, payloadHash);
   const observationId = await deterministicId(
     "candidate-observation",
     input.due.candidacy_id,
     snapshot.id,
     "profile",
   );
-  const profileChanged = input.due.current_profile_payload_hash !== payloadHash;
+  const profileChanged =
+    input.due.current_profile_payload_hash !== payloadHash ||
+    !input.due.current_source_item_version_id;
+  const versionId =
+    !profileChanged && input.due.current_source_item_version_id
+      ? input.due.current_source_item_version_id
+      : await deterministicId(
+          "itemversion",
+          input.due.source_item_id,
+          payloadHash,
+          snapshot.id,
+        );
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
@@ -1616,7 +1649,7 @@ async function processCandidateProfile(input: {
           id, source_item_id, ingestion_run_id, snapshot_id, observed_at,
           payload, payload_hash, parser_version
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'candidate-profile-v1')
-        ON CONFLICT(source_item_id, payload_hash) DO NOTHING`,
+        ON CONFLICT(id) DO NOTHING`,
       )
       .bind(
         versionId,

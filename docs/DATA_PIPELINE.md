@@ -39,6 +39,64 @@ Government YouTube feeds, and Tynwald Hansard. A source should not be activated
 until its machine-readable endpoint, host allowlist and reuse rights have been
 verified.
 
+## Candidate dossiers and campaign analysis
+
+The reviewer confirms candidate associations as part of approving a source
+version. Those associations are copied from the collector's mutable match into
+an immutable, version-specific projection. A reviewer can remove a false match,
+add a missed candidate, or approve an item without assigning it. A rejected
+item is never projected into a candidate dossier.
+
+Versions approved before candidate filing was introduced are not guessed or
+silently backfilled. If the collector had proposed a candidate match, the
+already-approved version appears in a separate candidate-filing reconciliation
+state. The founder can confirm or dismiss those matches through a new immutable
+review and audit event while the original source approval remains unchanged.
+
+Each confirmed candidate receives a private evidence dossier made only from the
+current approved source versions assigned to that candidacy. The candidate page
+shows that dossier to an authorised founder immediately, including the original
+URL, source, reviewed time, version identifier and review identifier. Public
+visitors see only evidence that has also completed the separate publication
+step. Raw captures, reviewer notes, contact details and rights-restricted source
+text are not exposed by this projection.
+
+Source versions represent semantic transitions rather than every polling pass.
+An unchanged observation keeps the current version, while a change creates a
+new immutable version tied to that observation's snapshot. If content moves
+from A to B and later returns to A, the return is still a new reviewable version;
+it cannot collide with or silently inherit the old A decision. The same
+mechanism allows a future dispute resolution to reopen an unchanged source as a
+new, explicitly audited editorial cycle instead of rewriting its old filing.
+
+An approval queues a candidate-intelligence refresh. The founder first sees an
+evidence-coverage preview with a current coverage fingerprint: it reports how
+much reviewed material exists, which separately
+reviewed issue positions are available, and what remains unknown. It does not
+infer a priority from repetition, turn source approval into a policy stance, or
+score popularity, momentum, ideology or likelihood of election. Proposition-
+level claims and transcript excerpts must be extracted into their own records,
+cited to exact evidence, reviewed by a human, and published as a new immutable
+revision before they can change the public campaign-platform summary.
+
+The coverage fingerprint is not itself a published analysis revision. The
+future generator must recompute the complete current corpus in its own guarded
+step, store its method/model and source manifest in an immutable revision, and
+require a separate human approval before that revision can be shown publicly.
+The current public reader accepts only a `candidate-analysis` revision whose
+payload uses `candidate-campaign-record-v1` and contains a bounded summary,
+source count and optional reviewed-through date. The database will not accept a
+published revision pointer unless that exact revision has both an immutable
+approval review and its matching hash-linked audit event.
+
+If a publisher changes an assigned source, the dossier stops treating the old
+version as current and the candidate-intelligence head moves to `needs-update`
+and `withheld`. The old projection remains available to the audit history; it is
+never rewritten to look as though the reviewer approved the replacement.
+Candidate projections are also closed when their review audit event is written;
+additional candidates cannot be attached later under an already completed
+decision without a new audited editorial cycle.
+
 ## Candidate registry and portraits
 
 The Manx Radio 2026 candidate directory is monitored as a structured HTML

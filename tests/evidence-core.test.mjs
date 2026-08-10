@@ -11,10 +11,20 @@ import { parseFeed } from "../app/lib/evidence/feed.ts";
 import { sha256Hex, stableJson } from "../app/lib/evidence/integrity.ts";
 import { normalizeReviewRationale } from "../app/lib/evidence/review-validation.ts";
 import {
+  insertSourceItemCandidateAssignmentReviewSql,
   insertSourceItemReviewSql,
+  sourceItemCandidateAssignmentReviewGuardSql,
   sourceItemVersionReviewGuardSql,
   updateSourceItemReviewStateSql,
 } from "../app/lib/evidence/review-sql.ts";
+import {
+  candidateIntelligenceInvalidationSql,
+  candidateIntelligenceRevisionInsertGuardSql,
+  candidateIntelligenceRevisionUpdateGuardSql,
+  sourceItemVersionEntityInsertGuardSql,
+  sourceItemVersionEntityNoDeleteSql,
+  sourceItemVersionEntityNoUpdateSql,
+} from "../app/lib/evidence/candidate-intelligence-sql.ts";
 import { candidates, updates } from "../app/lib/data.ts";
 
 test("candidate directory cards retain constituency and portrait provenance", () => {
@@ -234,10 +244,55 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       );
       CREATE TABLE audit_events (
         id TEXT PRIMARY KEY,
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        payload TEXT NOT NULL
+      );
+      CREATE TABLE candidacies (
+        id TEXT PRIMARY KEY,
+        declaration_status TEXT NOT NULL
+      );
+      CREATE TABLE source_item_version_entities (
+        source_item_version_id TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        mention_text TEXT NOT NULL,
+        match_method TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        review_id TEXT NOT NULL,
+        confirmation_state TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (source_item_version_id, entity_type, entity_id)
+      );
+      CREATE TABLE candidate_intelligence_heads (
+        candidacy_id TEXT PRIMARY KEY,
+        analysis_state TEXT NOT NULL,
+        publication_state TEXT NOT NULL,
+        desired_corpus_hash TEXT,
+        latest_revision_id TEXT,
+        published_revision_id TEXT,
+        stale_at TEXT,
+        updated_at TEXT
+      );
+      CREATE TABLE revisions (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL,
         entity_id TEXT NOT NULL
       );
     `);
     database.exec(sourceItemVersionReviewGuardSql);
+    database.exec(sourceItemCandidateAssignmentReviewGuardSql);
+    database.exec(sourceItemVersionEntityInsertGuardSql);
+    database.exec(sourceItemVersionEntityNoUpdateSql);
+    database.exec(sourceItemVersionEntityNoDeleteSql);
+    database.exec(candidateIntelligenceInvalidationSql);
+    database.exec(candidateIntelligenceRevisionInsertGuardSql);
+    database.exec(candidateIntelligenceRevisionUpdateGuardSql);
+    database.prepare("INSERT INTO candidacies (id, declaration_status) VALUES (?, ?)")
+      .run("candidacy-a", "prospective");
+    database.prepare("INSERT INTO candidacies (id, declaration_status) VALUES (?, ?)")
+      .run("candidacy-b", "prospective");
     database.prepare(
       `INSERT INTO source_items
         (id, latest_version_id, content_hash, review_state, publication_state)
@@ -247,6 +302,23 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       `INSERT INTO source_item_versions (id, source_item_id, payload_hash)
        VALUES (?, ?, ?)`,
     ).run("version-a", "item-a", "hash-a");
+    assert.throws(
+      () => database.prepare(
+        `INSERT INTO source_item_version_entities
+          (source_item_version_id, entity_type, entity_id, mention_text,
+           match_method, confidence, review_id, confirmation_state, created_at)
+         VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'confirmed', ?)`,
+      ).run(
+        "version-a",
+        "candidacy-a",
+        "Candidate A",
+        "deterministic-test",
+        1,
+        "review-a",
+        "2026-08-10T09:59:00.000Z",
+      ),
+      /current approved source version/,
+    );
 
     database.exec("BEGIN IMMEDIATE");
     try {
@@ -265,8 +337,30 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         "version-a",
         "hash-a",
       );
-      database.prepare("INSERT INTO audit_events (id, entity_id) VALUES (?, ?)")
-        .run("audit-a", "version-a");
+      database.prepare(
+        `INSERT INTO source_item_version_entities
+          (source_item_version_id, entity_type, entity_id, mention_text,
+           match_method, confidence, review_id, confirmation_state, created_at)
+         VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'confirmed', ?)`,
+      ).run(
+        "version-a",
+        "candidacy-a",
+        "Candidate A",
+        "deterministic-test",
+        1,
+        "review-a",
+        "2026-08-10T10:00:00.000Z",
+      );
+      database.prepare(
+        `INSERT INTO candidate_intelligence_heads
+          (candidacy_id, analysis_state, publication_state, desired_corpus_hash,
+           published_revision_id, updated_at)
+         VALUES (?, 'queued', 'private', ?, NULL, ?)`,
+      ).run("candidacy-a", "corpus-a", "2026-08-10T10:00:00.000Z");
+      database.prepare(
+        `INSERT INTO audit_events (id, action, entity_type, entity_id, payload)
+         VALUES (?, 'source-item.reviewed', 'source-item-version', ?, '{}')`,
+      ).run("audit-a", "version-a");
       database.exec("COMMIT");
     } catch (error) {
       database.exec("ROLLBACK");
@@ -281,6 +375,33 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
     );
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM reviews").get().count, 1);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
+    assert.equal(
+      database.prepare("SELECT COUNT(*) AS count FROM source_item_version_entities").get().count,
+      1,
+    );
+    assert.throws(
+      () => database.prepare(
+        `INSERT INTO source_item_version_entities
+          (source_item_version_id, entity_type, entity_id, mention_text,
+           match_method, confidence, review_id, confirmation_state, created_at)
+         VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'confirmed', ?)`,
+      ).run(
+        "version-a",
+        "candidacy-b",
+        "Candidate B",
+        "late-unaudited-insert",
+        1,
+        "review-a",
+        "2026-08-10T10:00:30.000Z",
+      ),
+      /current approved source version/,
+    );
+    assert.throws(
+      () => database.prepare(
+        "UPDATE source_item_version_entities SET mention_text = ? WHERE source_item_version_id = ?",
+      ).run("Rewritten", "version-a"),
+      /immutable/,
+    );
     assert.throws(
       () => database.prepare(insertSourceItemReviewSql).run(
         "review-conflict",
@@ -318,8 +439,10 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         "version-rejected",
         "hash-rejected",
       );
-      database.prepare("INSERT INTO audit_events (id, entity_id) VALUES (?, ?)")
-        .run("audit-rejected", "version-rejected");
+      database.prepare(
+        `INSERT INTO audit_events (id, action, entity_type, entity_id, payload)
+         VALUES (?, 'source-item.reviewed', 'source-item-version', ?, '{}')`,
+      ).run("audit-rejected", "version-rejected");
       database.exec("COMMIT");
     } catch (error) {
       database.exec("ROLLBACK");
@@ -330,6 +453,144 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         "SELECT review_state, publication_state FROM source_items WHERE id = 'item-rejected'",
       ).get() },
       { publication_state: "withheld", review_state: "rejected" },
+    );
+    assert.throws(
+      () => database.prepare(
+        `INSERT INTO source_item_version_entities
+          (source_item_version_id, entity_type, entity_id, mention_text,
+           match_method, confidence, review_id, confirmation_state, created_at)
+         VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'confirmed', ?)`,
+      ).run(
+        "version-rejected",
+        "candidacy-a",
+        "Candidate A",
+        "deterministic-test",
+        1,
+        "review-rejected",
+        "2026-08-10T10:02:00.000Z",
+      ),
+      /current approved source version/,
+    );
+
+    database.prepare(
+      `INSERT INTO source_items
+        (id, latest_version_id, content_hash, review_state, publication_state)
+       VALUES (?, ?, ?, 'unreviewed', 'private')`,
+    ).run("item-legacy", "version-legacy", "hash-legacy");
+    database.prepare(
+      "INSERT INTO source_item_versions (id, source_item_id, payload_hash) VALUES (?, ?, ?)",
+    ).run("version-legacy", "item-legacy", "hash-legacy");
+    database.prepare(insertSourceItemReviewSql).run(
+      "review-legacy-source",
+      "version-legacy",
+      "approved",
+      "Source and captured version checked before candidate filing existed.",
+      "reviewer-a",
+      "2026-08-10T10:03:00.000Z",
+    );
+    database.prepare(updateSourceItemReviewStateSql).run(
+      "approved",
+      "approved",
+      "item-legacy",
+      "version-legacy",
+      "hash-legacy",
+    );
+    database.prepare(insertSourceItemCandidateAssignmentReviewSql).run(
+      "review-legacy-assignment",
+      "version-legacy",
+      "approved",
+      "Candidate filing checked against the already-approved source version.",
+      "reviewer-a",
+      "2026-08-10T10:04:00.000Z",
+    );
+    database.prepare(
+      `INSERT INTO source_item_version_entities
+        (source_item_version_id, entity_type, entity_id, mention_text,
+         match_method, confidence, review_id, confirmation_state, created_at)
+       VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'confirmed', ?)`,
+    ).run(
+      "version-legacy",
+      "candidacy-a",
+      "Candidate A",
+      "founder-reconciliation-test",
+      1,
+      "review-legacy-assignment",
+      "2026-08-10T10:04:00.000Z",
+    );
+    assert.equal(
+      database.prepare(
+        "SELECT confirmation_state FROM source_item_version_entities WHERE source_item_version_id = ?",
+      ).get("version-legacy").confirmation_state,
+      "confirmed",
+    );
+
+    database.prepare(
+      `INSERT INTO source_items
+        (id, latest_version_id, content_hash, review_state, publication_state)
+       VALUES (?, ?, ?, 'unreviewed', 'private')`,
+    ).run("item-dismiss", "version-dismiss", "hash-dismiss");
+    database.prepare(
+      "INSERT INTO source_item_versions (id, source_item_id, payload_hash) VALUES (?, ?, ?)",
+    ).run("version-dismiss", "item-dismiss", "hash-dismiss");
+    database.prepare(insertSourceItemReviewSql).run(
+      "review-dismiss-source",
+      "version-dismiss",
+      "approved",
+      "Source and captured version checked before candidate filing existed.",
+      "reviewer-a",
+      "2026-08-10T10:05:00.000Z",
+    );
+    database.prepare(updateSourceItemReviewStateSql).run(
+      "approved",
+      "approved",
+      "item-dismiss",
+      "version-dismiss",
+      "hash-dismiss",
+    );
+    database.prepare(insertSourceItemCandidateAssignmentReviewSql).run(
+      "review-dismiss-assignment",
+      "version-dismiss",
+      "rejected",
+      "The detected candidate name belongs to an unrelated quoted statement.",
+      "reviewer-a",
+      "2026-08-10T10:06:00.000Z",
+    );
+    assert.throws(
+      () => database.prepare(
+        `INSERT INTO source_item_version_entities
+          (source_item_version_id, entity_type, entity_id, mention_text,
+           match_method, confidence, review_id, confirmation_state, created_at)
+         VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'confirmed', ?)`,
+      ).run(
+        "version-dismiss",
+        "candidacy-a",
+        "Candidate A",
+        "deterministic-test",
+        0.7,
+        "review-dismiss-assignment",
+        "2026-08-10T10:06:00.000Z",
+      ),
+      /current approved source version/,
+    );
+    database.prepare(
+      `INSERT INTO source_item_version_entities
+        (source_item_version_id, entity_type, entity_id, mention_text,
+         match_method, confidence, review_id, confirmation_state, created_at)
+       VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'rejected', ?)`,
+    ).run(
+      "version-dismiss",
+      "candidacy-a",
+      "Candidate A",
+      "deterministic-test",
+      0.7,
+      "review-dismiss-assignment",
+      "2026-08-10T10:06:00.000Z",
+    );
+    assert.equal(
+      database.prepare(
+        "SELECT confirmation_state FROM source_item_version_entities WHERE source_item_version_id = ?",
+      ).get("version-dismiss").confirmation_state,
+      "rejected",
     );
 
     database.prepare(
@@ -357,6 +618,154 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         "SELECT review_state, publication_state FROM source_items WHERE id = 'item-a'",
       ).get() },
       { publication_state: "withheld", review_state: "needs-update" },
+    );
+    assert.deepEqual(
+      { ...database.prepare(
+        `SELECT analysis_state, publication_state, desired_corpus_hash
+           FROM candidate_intelligence_heads WHERE candidacy_id = 'candidacy-a'`,
+      ).get() },
+      {
+        analysis_state: "needs-update",
+        desired_corpus_hash: null,
+        publication_state: "withheld",
+      },
+    );
+
+    database.prepare(
+      "INSERT INTO source_item_versions (id, source_item_id, payload_hash) VALUES (?, ?, ?)",
+    ).run("version-a-reverted", "item-a", "hash-a");
+    database.prepare(
+      `UPDATE source_items SET latest_version_id = ?, content_hash = ? WHERE id = ?`,
+    ).run("version-a-reverted", "hash-a", "item-a");
+    database.prepare(insertSourceItemReviewSql).run(
+      "review-a-reverted",
+      "version-a-reverted",
+      "approved",
+      "The reappearing source content was reviewed as a new semantic transition.",
+      "reviewer-a",
+      "2026-08-10T10:10:00.000Z",
+    );
+    database.prepare(updateSourceItemReviewStateSql).run(
+      "approved",
+      "approved",
+      "item-a",
+      "version-a-reverted",
+      "hash-a",
+    );
+    assert.equal(
+      database.prepare("SELECT review_state FROM source_items WHERE id = 'item-a'").get()
+        .review_state,
+      "approved",
+    );
+
+    database.prepare(
+      "INSERT INTO revisions (id, entity_type, entity_id) VALUES (?, 'candidate-analysis', ?)",
+    ).run("analysis-revision-a", "candidacy-b");
+    database.prepare(
+      `INSERT INTO candidate_intelligence_heads
+        (candidacy_id, analysis_state, publication_state, latest_revision_id, updated_at)
+       VALUES (?, 'approved', 'private', ?, ?)`,
+    ).run("candidacy-b", "analysis-revision-a", "2026-08-10T10:11:00.000Z");
+    assert.throws(
+      () => database.prepare(
+        `UPDATE candidate_intelligence_heads
+            SET published_revision_id = ?, publication_state = 'published'
+          WHERE candidacy_id = ?`,
+      ).run("analysis-revision-a", "candidacy-b"),
+      /requires an audited approval/,
+    );
+    database.prepare(
+      `INSERT INTO reviews
+        (id, target_type, target_id, decision, rationale, reviewer_id, created_at)
+       VALUES (?, 'candidate-analysis-revision', ?, 'approved', ?, ?, ?)`,
+    ).run(
+      "analysis-review-a",
+      "analysis-revision-a",
+      "The cited campaign overview and its corpus were reviewed.",
+      "reviewer-a",
+      "2026-08-10T10:12:00.000Z",
+    );
+    assert.throws(
+      () => database.prepare(
+        `UPDATE candidate_intelligence_heads
+            SET published_revision_id = ?, publication_state = 'published'
+          WHERE candidacy_id = ?`,
+      ).run("analysis-revision-a", "candidacy-b"),
+      /requires an audited approval/,
+    );
+    database.prepare(
+      `INSERT INTO audit_events (id, action, entity_type, entity_id, payload)
+       VALUES (?, 'candidate-analysis.reviewed', 'candidate-analysis-revision', ?, ?)`,
+    ).run(
+      "analysis-audit-a",
+      "analysis-revision-a",
+      JSON.stringify({ reviewId: "analysis-review-a" }),
+    );
+    database.prepare(
+      `UPDATE candidate_intelligence_heads
+          SET published_revision_id = ?, publication_state = 'published'
+        WHERE candidacy_id = ?`,
+    ).run("analysis-revision-a", "candidacy-b");
+    assert.equal(
+      database.prepare(
+        "SELECT publication_state FROM candidate_intelligence_heads WHERE candidacy_id = ?",
+      ).get("candidacy-b").publication_state,
+      "published",
+    );
+
+    database.prepare(
+      `UPDATE candidate_intelligence_heads
+          SET analysis_state = 'needs-update', publication_state = 'withheld',
+              published_revision_id = NULL, stale_at = ?
+        WHERE candidacy_id = ?`,
+    ).run("2026-08-10T10:13:00.000Z", "candidacy-b");
+    assert.throws(
+      () => database.prepare(
+        `UPDATE candidate_intelligence_heads
+            SET analysis_state = 'approved', publication_state = 'published'
+          WHERE candidacy_id = ?`,
+      ).run("candidacy-b"),
+      /must be current and approved/,
+    );
+    database.prepare(
+      "INSERT INTO revisions (id, entity_type, entity_id) VALUES (?, 'candidate-analysis', ?)",
+    ).run("analysis-revision-b", "candidacy-b");
+    database.prepare(
+      `INSERT INTO reviews
+        (id, target_type, target_id, decision, rationale, reviewer_id, created_at)
+       VALUES (?, 'candidate-analysis-revision', ?, 'approved', ?, ?, ?)`,
+    ).run(
+      "analysis-review-b",
+      "analysis-revision-b",
+      "The refreshed campaign overview and changed evidence corpus were reviewed.",
+      "reviewer-a",
+      "2026-08-10T10:14:00.000Z",
+    );
+    database.prepare(
+      `INSERT INTO audit_events (id, action, entity_type, entity_id, payload)
+       VALUES (?, 'candidate-analysis.reviewed', 'candidate-analysis-revision', ?, ?)`,
+    ).run(
+      "analysis-audit-b",
+      "analysis-revision-b",
+      JSON.stringify({ reviewId: "analysis-review-b" }),
+    );
+    database.prepare(
+      `UPDATE candidate_intelligence_heads
+          SET latest_revision_id = ?, published_revision_id = ?,
+              analysis_state = 'approved', publication_state = 'published', stale_at = NULL
+        WHERE candidacy_id = ?`,
+    ).run("analysis-revision-b", "analysis-revision-b", "candidacy-b");
+    assert.deepEqual(
+      { ...database.prepare(
+        `SELECT latest_revision_id, published_revision_id, publication_state, stale_at
+           FROM candidate_intelligence_heads WHERE candidacy_id = ?`,
+      ).get("candidacy-b") },
+      {
+        latest_revision_id: "analysis-revision-b",
+        publication_state: "published",
+        published_revision_id: "analysis-revision-b",
+        stale_at: null,
+      },
     );
   } finally {
     database.close();

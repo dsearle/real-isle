@@ -391,6 +391,7 @@
 .cardFooter { align-items: end; display: flex; gap: 10px; justify-content: space-between; margin-top: auto; padding-top: 12px; }
 .cardFooter span { color: #718184; font-size: 8px; }
 .cardFooter a, .evidenceInboxCard > a { color: #0d6970; font-size: 9px; font-weight: 850; }
+.cardFooterLinks { align-items: center; display: flex; gap: 9px; }
 
 .evidenceInboxGrid { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .evidenceInboxCard { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .17); border-radius: 11px; display: flex; flex-direction: column; min-height: 285px; padding: 19px; }
@@ -488,6 +489,59 @@
   font-size: 10px;
   line-height: 1.55;
   margin: 8px 0 12px;
+}
+
+.candidateAssignment {
+  background: #fffdf7;
+  border: 1px solid rgba(18, 50, 56, .18);
+  border-radius: 8px;
+  display: grid;
+  gap: 9px;
+  margin: 0 0 13px;
+  min-inline-size: 0;
+  padding: 11px;
+}
+
+.candidateAssignment > legend {
+  color: #123238;
+  font-size: 10px;
+  font-weight: 850;
+  padding: 0 4px;
+}
+
+.candidateAssignment > p,
+.candidateAssignment > small {
+  color: #5c7174;
+  font-size: 9px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.candidateAssignmentList { display: grid; gap: 6px; }
+.candidateAssignmentList label {
+  align-items: center;
+  background: #eef2ec;
+  border-radius: 7px;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto 1fr;
+  padding: 8px;
+}
+.candidateAssignmentList input { height: 18px; width: 18px; }
+.candidateAssignmentList span { color: #274a4f; display: grid; font-size: 10px; font-weight: 800; gap: 2px; }
+.candidateAssignmentList small { color: #65787b; font-size: 8px; font-weight: 500; }
+.candidateAddLabel { display: grid; gap: 5px; }
+.candidateAddLabel > span { color: #274a4f; font-size: 8px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.candidateAddLabel select {
+  background: #fff;
+  border: 1px solid rgba(18, 50, 56, .28);
+  border-radius: 7px;
+  color: #123238;
+  font: 700 10px ui-sans-serif, system-ui, sans-serif;
+  min-height: 40px;
+  padding: 8px;
+  width: 100%;
 }
 
 .decisionLabel {

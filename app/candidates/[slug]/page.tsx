@@ -1,19 +1,32 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- Vinext's deployed client router currently throws on navigation; document links are intentional. */
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { AnimatedCandidatePortrait } from "../../components/AnimatedCandidatePortrait";
 import { Footer } from "../../components/Footer";
 import { Header } from "../../components/Header";
 import { ProfileMotion } from "../../components/ProfileMotion";
-import { candidates, getCandidate } from "../../lib/data";
+import { candidates } from "../../lib/data";
+import { getCandidatePageData } from "../../lib/evidence/candidate-intelligence";
 
-export function generateStaticParams() {
-  return candidates.map((candidate) => ({ slug: candidate.slug }));
-}
+export const dynamic = "force-dynamic";
+
+const loadCandidatePage = cache(async (slug: string) => {
+  let includePrivate = false;
+  try {
+    const { getAuthenticatedAdminAccess } = await import("../../lib/admin-auth");
+    const access = await getAuthenticatedAdminAccess();
+    includePrivate = Boolean(access?.allowed);
+  } catch {
+    // Non-Workers renders use the public-only static fallback.
+  }
+  return getCandidatePageData(slug, { includePrivate });
+});
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const candidate = getCandidate(slug);
+  const pageData = await loadCandidatePage(slug);
+  const candidate = pageData?.candidate;
   if (!candidate) return { title: "Candidate not found" };
   return {
     title: candidate.name,
@@ -23,13 +36,38 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function CandidatePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const candidate = getCandidate(slug);
-  if (!candidate) notFound();
-  const candidateIndex = candidates.findIndex((entry) => entry.slug === candidate.slug);
+  const pageData = await loadCandidatePage(slug);
+  if (!pageData) notFound();
+  const { candidate, dossierEvidence, founderPreview, overview, privateView, publishedOverview } = pageData;
+  const candidateIndex = Math.max(0, candidates.findIndex((entry) => entry.slug === candidate.slug));
   const otherCandidates = candidates
     .filter((entry) => entry.slug !== candidate.slug)
     .sort((a, b) => Number(b.constituency === candidate.constituency) - Number(a.constituency === candidate.constituency))
     .slice(0, 3);
+  const liveEvidenceUrls = new Set(dossierEvidence.map((item) => item.canonicalUrl));
+  const sourceLedger = [
+    ...dossierEvidence.map((item) => ({
+      audit: `Version ${item.versionId.slice(-8)} · Review ${item.reviewId.slice(-8)}`,
+      label: item.title,
+      observed: new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(item.reviewedAt)),
+      source: item.sourceName,
+      state: item.publicationState === "published" ? "Published evidence" : "Private founder preview",
+      url: item.canonicalUrl,
+    })),
+    ...candidate.sources
+      .filter((source) => !liveEvidenceUrls.has(source.url))
+      .map((source) => ({
+        audit: "Last editorial profile",
+        label: source.label,
+        observed: source.observed,
+        source: new URL(source.url).hostname,
+        state: "Published editorial source",
+        url: source.url,
+      })),
+  ];
+  const lastReviewed = overview.latestReviewedAt
+    ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(overview.latestReviewedAt))
+    : candidate.sources.length ? "9 Aug 2026" : "Not yet reviewed";
 
   return (
     <main className={`candidate-profile-page candidate-theme-${candidateIndex % 6}`}>
@@ -64,14 +102,38 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
           <aside className="profile-verification" data-profile-reveal>
             <span className="verification-mark" aria-hidden="true">✓</span>
             <p>Evidence profile</p>
-            <strong>{candidate.evidenceCount} reviewed source</strong>
-            <small>Last reviewed 9 Aug 2026</small>
+            <strong>{candidate.evidenceCount} reviewed source{candidate.evidenceCount === 1 ? "" : "s"}</strong>
+            <small>Last reviewed {lastReviewed}</small>
           </aside>
         </div>
       </section>
 
       <section className="section shell profile-layout">
         <article className="profile-main">
+          <section className={`campaign-overview ${privateView ? "campaign-overview-private" : ""}`} data-profile-reveal>
+            <div className="campaign-overview-heading">
+              <div>
+                <p className="eyebrow eyebrow-dark">{privateView ? "Campaign platform draft" : "Campaign evidence"}</p>
+                <h2>Evidence overview</h2>
+              </div>
+              <span>{privateView
+                ? founderPreview ? "Founder preview · private" : "Founder workspace · private"
+                : publishedOverview ? "Published analysis revision" : pageData.dataSource === "static-fallback" ? "Existing editorial profile" : "Public record"}</span>
+            </div>
+            <p>{privateView
+              ? overview.text
+              : publishedOverview?.summary
+                ?? "A generated campaign-platform overview has not yet been published. Claim-level citations and review are still being completed."}</p>
+            <dl className="campaign-overview-facts">
+              <div><dt>Reviewed sources</dt><dd>{publishedOverview?.sourceCount ?? overview.sourceCount}</dd></div>
+              {privateView ? <div><dt>Analysis workflow</dt><dd>{overview.analysisState.replaceAll("-", " ")}</dd></div> : <div><dt>Overview status</dt><dd>{publishedOverview ? "Published" : "Not published"}</dd></div>}
+              {privateView ? <div><dt>Coverage fingerprint</dt><dd><code>{overview.inputHash.slice(0, 12)}…</code></dd></div> : null}
+              {!privateView && publishedOverview ? <div><dt>Revision fingerprint</dt><dd><code>{publishedOverview.payloadHash.slice(0, 12)}…</code></dd></div> : null}
+              {!privateView && publishedOverview ? <div><dt>Reviewed through</dt><dd>{publishedOverview.reviewedThrough ?? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(publishedOverview.createdAt))}</dd></div> : null}
+            </dl>
+            <small>{overview.caveat}</small>
+          </section>
+
           <div className="profile-section-heading">
             <span>01</span>
             <div>
@@ -79,14 +141,16 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
               <h2>In the candidate’s public record</h2>
             </div>
           </div>
-          <ol className="priority-list">
-            {candidate.priorities.map((priority, index) => (
+          {privateView && candidate.priorities.length ? <><ul className="priority-list">
+            {candidate.priorities.map((priority) => (
               <li data-profile-reveal key={priority}>
-                <span>0{index + 1}</span>
+                <span aria-hidden="true">•</span>
                 <strong>{priority}</strong>
               </li>
             ))}
-          </ol>
+          </ul><p className="profile-record-note">These priorities are retained from the existing editorial profile. Claim-level evidence binding is still being completed.</p></> : <p className="profile-empty-record">{privateView
+            ? "No ordered set of campaign priorities has yet completed review. Repeated mentions are not treated as priorities."
+            : "Campaign priorities will appear after each assertion has a proposition-level citation and a published review."}</p>}
 
           <div className="profile-section-heading positions-heading">
             <span>02</span>
@@ -106,10 +170,18 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
                 <div className="position-card" data-profile-reveal key={key}>
                   <div>
                     <h3>{label}</h3>
-                    <span className={`position-state position-${position.state}`}>{position.label}</span>
+                    <span className={`position-state position-${privateView ? position.state : "missing"}`}>
+                      {privateView ? position.label : "Awaiting citation review"}
+                    </span>
                   </div>
-                  <p>{position.detail}</p>
-                  <a href={candidate.sources[0].url} target="_blank" rel="noreferrer">Inspect evidence ↗</a>
+                  <p>{privateView ? position.detail : "This topic is awaiting proposition-level citation review."}</p>
+                  <span className="profile-no-position-note">{!privateView
+                    ? "No candidate position is published here until the exact supporting evidence has been reviewed."
+                    : position.state !== "missing"
+                    ? "Retained from the existing editorial profile; proposition-level evidence binding is in progress."
+                    : position.label === "Not assessed"
+                      ? "This question has not yet been reviewed."
+                      : "No published position was found in the listed sources. This does not mean the candidate has no view."}</span>
                 </div>
               );
             })}
@@ -121,21 +193,27 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
             <p className="eyebrow eyebrow-dark">Source ledger</p>
             <h2>Original evidence</h2>
           </div>
-          {candidate.sources.map((source, index) => (
-            <a className="source-ledger-item" data-profile-reveal href={source.url} key={source.url} target="_blank" rel="noreferrer">
+          {sourceLedger.map((source, index) => (
+            <a className="source-ledger-item" data-profile-reveal href={source.url} key={`${source.url}:${index}`} target="_blank" rel="noreferrer">
               <span>0{index + 1}</span>
               <div>
                 <strong>{source.label}</strong>
-                <small>Observed {source.observed}</small>
-                <small className="ledger-url">{new URL(source.url).hostname}</small>
+                <small>{source.state} · {source.observed}</small>
+                <small className="ledger-url">{source.source}</small>
+                <small>{source.audit}</small>
               </div>
               <i aria-hidden="true">↗</i>
             </a>
           ))}
+          {!sourceLedger.length ? <p className="evidence-ledger-empty">No reviewed evidence is published for this candidate yet.</p> : null}
           <div className="audit-note">
             <span aria-hidden="true">⌁</span>
-            <h3>Audit preview</h3>
-            <p>Source snapshots, evidence spans and revision hashes will be exposed here once the publication ledger is connected.</p>
+            <h3>{privateView ? "Private analysis queue" : publishedOverview ? "Published analysis revision" : "Campaign overview pending"}</h3>
+            <p>{privateView
+              ? "Approved source versions are now frozen to this candidate dossier. Claim extraction and position review are the next stage before any generated analysis can be published."
+              : publishedOverview
+                ? `Candidate campaign record v1 · revision ${publishedOverview.revisionId.slice(-12)}.`
+                : "Only a separately reviewed, cited and published analysis revision will appear here."}</p>
           </div>
           <a className="dispute-link" href="mailto:editor@realisle.im?subject=Profile evidence challenge">
             Challenge or correct this profile

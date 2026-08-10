@@ -1,4 +1,15 @@
-import { sourceItemVersionReviewGuardSql } from "./review-sql";
+import {
+  candidateIntelligenceInvalidationSql,
+  candidateIntelligenceRevisionInsertGuardSql,
+  candidateIntelligenceRevisionUpdateGuardSql,
+  sourceItemVersionEntityInsertGuardSql,
+  sourceItemVersionEntityNoDeleteSql,
+  sourceItemVersionEntityNoUpdateSql,
+} from "./candidate-intelligence-sql";
+import {
+  sourceItemCandidateAssignmentReviewGuardSql,
+  sourceItemVersionReviewGuardSql,
+} from "./review-sql";
 
 const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS audit_event_chain_guard
@@ -59,6 +70,13 @@ const evidenceTriggerSql = [
    BEFORE DELETE ON reviews
    BEGIN SELECT RAISE(ABORT, 'review decisions are immutable'); END`,
   sourceItemVersionReviewGuardSql,
+  sourceItemCandidateAssignmentReviewGuardSql,
+  sourceItemVersionEntityInsertGuardSql,
+  sourceItemVersionEntityNoUpdateSql,
+  sourceItemVersionEntityNoDeleteSql,
+  candidateIntelligenceInvalidationSql,
+  candidateIntelligenceRevisionInsertGuardSql,
+  candidateIntelligenceRevisionUpdateGuardSql,
   `CREATE TRIGGER IF NOT EXISTS transcripts_content_no_update
    BEFORE UPDATE OF job_id, revision_number, parent_transcript_id, candidacy_id,
      source_snapshot_id, title, language, source_kind, producer, producer_version,

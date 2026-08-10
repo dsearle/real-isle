@@ -295,7 +295,7 @@ export const sourceItemVersions = sqliteTable(
     createdAt: createdAt(),
   },
   (table) => [
-    uniqueIndex("idx_source_item_versions_item_payload").on(table.sourceItemId, table.payloadHash),
+    index("idx_source_item_versions_item_payload").on(table.sourceItemId, table.payloadHash),
     index("idx_source_item_versions_item_observed").on(table.sourceItemId, table.observedAt),
   ],
 );
@@ -903,6 +903,38 @@ export const reviews = sqliteTable(
   (table) => [index("idx_reviews_target_created").on(table.targetType, table.targetId, table.createdAt)],
 );
 
+export const sourceItemVersionEntities = sqliteTable(
+  "source_item_version_entities",
+  {
+    sourceItemVersionId: text("source_item_version_id")
+      .notNull()
+      .references(() => sourceItemVersions.id),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    mentionText: text("mention_text").notNull(),
+    matchMethod: text("match_method").notNull(),
+    confidence: real("confidence").notNull(),
+    reviewId: text("review_id")
+      .notNull()
+      .references(() => reviews.id),
+    confirmationState: text("confirmation_state").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sourceItemVersionId, table.entityType, table.entityId] }),
+    index("idx_source_item_version_entities_entity").on(table.entityType, table.entityId),
+    index("idx_source_item_version_entities_review").on(table.reviewId),
+    check(
+      "source_item_version_entities_confidence_check",
+      sql`${table.confidence} >= 0 AND ${table.confidence} <= 1`,
+    ),
+    check(
+      "source_item_version_entities_confirmation_check",
+      sql`${table.confirmationState} IN ('confirmed', 'rejected')`,
+    ),
+  ],
+);
+
 export const disputes = sqliteTable(
   "disputes",
   {
@@ -940,6 +972,42 @@ export const revisions = sqliteTable(
       table.entityType,
       table.entityId,
       table.revisionNumber,
+    ),
+  ],
+);
+
+export const candidateIntelligenceHeads = sqliteTable(
+  "candidate_intelligence_heads",
+  {
+    candidacyId: text("candidacy_id")
+      .primaryKey()
+      .references(() => candidacies.id),
+    analysisState: text("analysis_state").notNull().default("missing"),
+    publicationState: text("publication_state").notNull().default("private"),
+    desiredCorpusHash: text("desired_corpus_hash"),
+    latestRevisionId: text("latest_revision_id").references(() => revisions.id),
+    publishedRevisionId: text("published_revision_id").references(() => revisions.id),
+    staleAt: text("stale_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("idx_candidate_intelligence_analysis").on(table.analysisState, table.updatedAt),
+    index("idx_candidate_intelligence_publication").on(
+      table.publicationState,
+      table.updatedAt,
+    ),
+    check(
+      "candidate_intelligence_analysis_check",
+      sql`${table.analysisState} IN ('missing', 'queued', 'draft', 'awaiting-review', 'approved', 'needs-update', 'failed')`,
+    ),
+    check(
+      "candidate_intelligence_publication_check",
+      sql`${table.publicationState} IN ('private', 'published', 'withheld')`,
+    ),
+    check(
+      "candidate_intelligence_publish_requires_approved_check",
+      sql`${table.publicationState} != 'published' OR (${table.analysisState} = 'approved' AND ${table.publishedRevisionId} IS NOT NULL)`,
     ),
   ],
 );

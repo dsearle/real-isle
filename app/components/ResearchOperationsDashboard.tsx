@@ -15,12 +15,14 @@ type ReviewDecision = "approved" | "rejected";
 type ReviewReceipt = {
   auditEventHash: string;
   auditSequence: number;
+  candidateIds: string[];
   createdAt: string;
   decision: ReviewDecision;
   idempotent: boolean;
   publicationState: string;
+  reviewKind: "candidate-assignment" | "source-version";
   reviewId: string;
-  reviewState: ReviewDecision;
+  reviewState: string;
   versionId: string;
 };
 
@@ -96,6 +98,8 @@ function CandidateCoverageCard({ candidate }: { candidate: CandidateRegistryStat
       <div className={styles.candidateCoverageBody}>
         <div className={styles.cardStateRow}>
           <StatePill state={candidate.completeness_state} tone={profileParsed ? "good" : "warn"} />
+          <StatePill state={`profile ${candidate.review_state}`} tone={candidate.review_state === "approved" ? "good" : "warn"} />
+          <StatePill state={`analysis ${candidate.intelligence_state}`} tone={candidate.intelligence_state === "approved" ? "good" : "neutral"} />
           <StatePill state={`photo ${candidate.portrait_rights_state ?? "not found"}`} />
         </div>
         <h3>{candidate.full_name}</h3>
@@ -112,6 +116,7 @@ function CandidateCoverageCard({ candidate }: { candidate: CandidateRegistryStat
           <div><dt>Interviews</dt><dd>{candidate.interview_count}</dd></div>
           <div><dt>Manifestos</dt><dd>{candidate.manifesto_count}</dd></div>
           <div><dt>Transcript inputs</dt><dd>{candidate.transcript_source_count}</dd></div>
+          <div><dt>Approved dossier sources</dt><dd>{candidate.dossier_evidence_count}</dd></div>
         </dl>
         <div className={styles.cardProvenance}>
           <span>Profile snapshot</span>
@@ -119,7 +124,10 @@ function CandidateCoverageCard({ candidate }: { candidate: CandidateRegistryStat
         </div>
         <div className={styles.cardFooter}>
           <span>Checked {formatTime(candidate.last_profile_checked_at)}</span>
-          <a href={candidate.profile_url} rel="noreferrer" target="_blank">Open source ↗</a>
+          <div className={styles.cardFooterLinks}>
+            <a href={`/candidates/${candidate.slug}`}>Open dossier →</a>
+            <a href={candidate.profile_url} rel="noreferrer" target="_blank">Source ↗</a>
+          </div>
         </div>
       </div>
     </article>
@@ -127,19 +135,29 @@ function CandidateCoverageCard({ candidate }: { candidate: CandidateRegistryStat
 }
 
 function ReviewDecisionControls({
+  candidateOptions,
   item,
   receipt,
   onDecided,
 }: {
+  candidateOptions: CandidateRegistryStatus[];
   item: EvidenceReviewItem;
   receipt?: ReviewReceipt;
   onDecided: (receipt: ReviewReceipt) => void;
 }) {
   const panelId = useId();
   const approveButtonRef = useRef<HTMLButtonElement>(null);
+  const assignmentRef = useRef<HTMLFieldSetElement>(null);
   const rejectButtonRef = useRef<HTMLButtonElement>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
   const rationaleRef = useRef<HTMLTextAreaElement>(null);
+  const initialCandidateIds = useMemo(
+    () => item.candidateAssociations.map((candidate) => candidate.candidacyId),
+    [item.candidateAssociations],
+  );
+  const [assignmentOptionIds, setAssignmentOptionIds] = useState(initialCandidateIds);
+  const [candidateIds, setCandidateIds] = useState(initialCandidateIds);
+  const [candidateToAdd, setCandidateToAdd] = useState("");
   const [decision, setDecision] = useState<ReviewDecision | null>(null);
   const [rationale, setRationale] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -147,10 +165,16 @@ function ReviewDecisionControls({
   const actionable = Boolean(item.latest_version_id && item.content_hash);
 
   function openDecision(nextDecision: ReviewDecision) {
+    setAssignmentOptionIds(initialCandidateIds);
+    setCandidateIds(initialCandidateIds);
+    setCandidateToAdd("");
     setDecision(nextDecision);
     setError(null);
     setRationale("");
-    requestAnimationFrame(() => rationaleRef.current?.focus());
+    requestAnimationFrame(() => {
+      if (nextDecision === "approved") assignmentRef.current?.focus();
+      else rationaleRef.current?.focus();
+    });
   }
 
   function cancelDecision() {
@@ -158,6 +182,9 @@ function ReviewDecisionControls({
     setDecision(null);
     setError(null);
     setRationale("");
+    setAssignmentOptionIds(initialCandidateIds);
+    setCandidateIds(initialCandidateIds);
+    setCandidateToAdd("");
     requestAnimationFrame(() => trigger.current?.focus());
   }
 
@@ -169,11 +196,14 @@ function ReviewDecisionControls({
     try {
       const response = await fetch("/api/admin/evidence/review", {
         body: JSON.stringify({
+          candidateSuggestionFingerprint: item.candidateSuggestionFingerprint,
           decision,
           expectedContentHash: item.content_hash,
           expectedVersionId: item.latest_version_id,
           itemId: item.id,
           rationale,
+          reviewKind: item.association_review_only ? "candidate-assignment" : "source-version",
+          candidateIds: decision === "approved" ? candidateIds : [],
         }),
         headers: { "content-type": "application/json" },
         method: "POST",
@@ -193,6 +223,7 @@ function ReviewDecisionControls({
   }
 
   if (receipt) {
+    const assignmentOnly = receipt.reviewKind === "candidate-assignment";
     return (
       <div
         aria-live="polite"
@@ -204,10 +235,17 @@ function ReviewDecisionControls({
         ref={receiptRef}
         tabIndex={-1}
       >
-        <strong>{receipt.decision === "approved" ? "Approved" : "Rejected and withheld"}</strong>
+        <strong>{assignmentOnly
+          ? receipt.decision === "approved" ? "Candidate filing confirmed" : "Candidate matches dismissed"
+          : receipt.decision === "approved" ? "Approved" : "Rejected and withheld"}</strong>
         <span>{formatTime(receipt.createdAt)} · Audit #{receipt.auditSequence}</span>
         <code>{shortHash(receipt.auditEventHash)}</code>
-        <small>The captured version and this decision remain in the audit record.</small>
+        <small>{assignmentOnly
+          ? "The source remains approved; this separate candidate-filing decision is immutable."
+          : "The captured version and this decision remain in the audit record."}</small>
+        {receipt.candidateIds.length ? (
+          <small>Added to {receipt.candidateIds.length} private candidate dossier{receipt.candidateIds.length === 1 ? "" : "s"}.</small>
+        ) : null}
       </div>
     );
   }
@@ -232,7 +270,7 @@ function ReviewDecisionControls({
           ref={approveButtonRef}
           type="button"
         >
-          Approve
+          {item.association_review_only ? "Confirm candidate filing" : "Approve"}
         </button>
         <button
           aria-expanded={decision === "rejected"}
@@ -243,22 +281,81 @@ function ReviewDecisionControls({
           ref={rejectButtonRef}
           type="button"
         >
-          Reject
+          {item.association_review_only ? "Dismiss candidate matches" : "Reject"}
         </button>
       </div>
       {decision ? (
         <form className={styles.decisionPanel} id={panelId} onSubmit={submitDecision}>
           <fieldset aria-busy={pending} disabled={pending}>
             <legend>
-              {decision === "approved" ? "Approve this captured version?" : "Reject this captured version?"}
+              {item.association_review_only
+                ? decision === "approved" ? "Confirm this candidate filing?" : "Dismiss these candidate matches?"
+                : decision === "approved" ? "Approve this captured version?" : "Reject this captured version?"}
             </legend>
             <p className={styles.decisionHelp}>
-              {decision === "approved"
-                ? "Approval accepts this version for editorial use. It does not publish it."
+              {item.association_review_only
+                ? decision === "approved"
+                  ? "This source was approved before candidate filing was introduced. Confirm which dossiers should receive the immutable version; the source itself stays approved."
+                  : "Record that the detected candidates should not receive this already-approved source. The source itself stays approved."
+                : decision === "approved"
+                ? "Approval freezes the selected candidate links and adds this version to their private research dossiers. It does not publish copied source text or a political claim."
                 : "Rejection keeps the snapshot for audit, records your reason and withholds this item."}
             </p>
+            {decision === "approved" ? (
+              <fieldset className={styles.candidateAssignment} ref={assignmentRef} tabIndex={-1}>
+                <legend>Candidate dossiers</legend>
+                {assignmentOptionIds.length ? (
+                  <div className={styles.candidateAssignmentList}>
+                    {assignmentOptionIds.map((candidateId) => {
+                      const candidate = candidateOptions.find((entry) => entry.candidacy_id === candidateId);
+                      const detected = item.candidateAssociations.find((entry) => entry.candidacyId === candidateId);
+                      return (
+                        <label key={candidateId}>
+                          <input
+                            checked={candidateIds.includes(candidateId)}
+                            onChange={(event) => setCandidateIds((current) => event.target.checked
+                              ? current.includes(candidateId) ? current : [...current, candidateId]
+                              : current.filter((id) => id !== candidateId))}
+                            type="checkbox"
+                          />
+                          <span>{candidate?.full_name ?? candidateId}<small>{detected
+                            ? `${candidate?.constituency_name ?? detected.constituencyName} · system suggestion via ${readableState(detected.matchMethod)} · “${detected.mentionText}”`
+                            : `${candidate?.constituency_name ?? "Constituency unknown"} · reviewer added`}</small></span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p>No candidate is assigned. The item can still be approved for editorial use.</p>
+                )}
+                <label className={styles.candidateAddLabel}>
+                  <span>Add another candidate</span>
+                  <select
+                    onChange={(event) => {
+                      const candidateId = event.target.value;
+                      if (candidateId) {
+                        setAssignmentOptionIds((current) => current.includes(candidateId) ? current : [...current, candidateId]);
+                        setCandidateIds((current) => current.includes(candidateId) ? current : [...current, candidateId]);
+                      }
+                      setCandidateToAdd("");
+                    }}
+                    value={candidateToAdd}
+                  >
+                    <option value="">Choose a candidate…</option>
+                    {candidateOptions
+                      .filter((candidate) => !assignmentOptionIds.includes(candidate.candidacy_id))
+                      .map((candidate) => (
+                        <option key={candidate.candidacy_id} value={candidate.candidacy_id}>
+                          {candidate.full_name} · {candidate.constituency_name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <small aria-live="polite">{candidateIds.length} candidate dossier{candidateIds.length === 1 ? "" : "s"} selected. Detected matches start selected; uncheck a false match or add a missed candidate.</small>
+              </fieldset>
+            ) : null}
             <label className={styles.decisionLabel}>
-              <span>{decision === "approved" ? "Review note (optional)" : "Reason for rejection"}</span>
+                <span>{decision === "approved" ? "Review note (optional)" : item.association_review_only ? "Reason for dismissing the matches" : "Reason for rejection"}</span>
               <textarea
                 className={styles.rationaleInput}
                 maxLength={500}
@@ -267,6 +364,8 @@ function ReviewDecisionControls({
                 placeholder={
                   decision === "approved"
                     ? "Add anything another reviewer should know"
+                    : item.association_review_only
+                      ? "Explain why the detected candidates should not receive this source"
                     : "Explain what is inaccurate, unsuitable or needs correction"
                 }
                 required={decision === "rejected"}
@@ -282,8 +381,8 @@ function ReviewDecisionControls({
                 type="submit"
               >
                 {pending
-                  ? decision === "approved" ? "Approving…" : "Rejecting…"
-                  : decision === "approved" ? "Confirm approval" : "Confirm rejection"}
+                  ? decision === "approved" ? item.association_review_only ? "Filing…" : "Approving…" : item.association_review_only ? "Dismissing…" : "Rejecting…"
+                  : decision === "approved" ? item.association_review_only ? "Confirm candidate filing" : "Confirm approval" : item.association_review_only ? "Dismiss matches" : "Confirm rejection"}
               </button>
               <button className={styles.cancelButton} onClick={cancelDecision} type="button">Cancel</button>
             </div>
@@ -295,10 +394,12 @@ function ReviewDecisionControls({
 }
 
 function EvidenceInboxCard({
+  candidateOptions,
   item,
   receipt,
   onDecided,
 }: {
+  candidateOptions: CandidateRegistryStatus[];
   item: EvidenceReviewItem;
   receipt?: ReviewReceipt;
   onDecided: (receipt: ReviewReceipt) => void;
@@ -308,19 +409,22 @@ function EvidenceInboxCard({
       <div className={styles.cardStateRow}>
         <StatePill state={item.item_type} />
         <StatePill
-          state={receipt?.reviewState ?? item.review_state}
-          tone={receipt?.reviewState === "approved" ? "good" : "warn"}
+          state={receipt?.reviewKind === "source-version" ? receipt.reviewState : item.review_state}
+          tone={(receipt?.reviewKind === "source-version" ? receipt.reviewState : item.review_state) === "approved" ? "good" : "warn"}
         />
+        {item.association_review_only && !receipt ? <StatePill state="candidate filing pending" tone="warn" /> : null}
       </div>
       <p className={styles.inboxSource}>{item.source_name} · {formatTime(item.published_at ?? item.first_seen_at)}</p>
       <h3>{item.title}</h3>
       <p>{item.summary || "No publisher summary was supplied. Open the captured source record for inspection."}</p>
       <div className={styles.evidenceMeta}>
-        <span>{item.candidate_ids ? "Candidate association detected" : "Entity review needed"}</span>
+        <span>{item.candidateAssociations.length
+          ? item.candidateAssociations.map((candidate) => candidate.fullName).join(", ")
+          : "No candidate association detected"}</span>
         <code>{shortHash(item.content_hash)}</code>
       </div>
       <a href={item.canonical_url} rel="noreferrer" target="_blank">Inspect original source ↗</a>
-      <ReviewDecisionControls item={item} onDecided={onDecided} receipt={receipt} />
+      <ReviewDecisionControls candidateOptions={candidateOptions} item={item} onDecided={onDecided} receipt={receipt} />
     </article>
   );
 }
@@ -504,6 +608,7 @@ function EvidencePanel({
       {dashboard.reviewItems.length ? (
         <div className={styles.evidenceInboxGrid}>{dashboard.reviewItems.map((item) => (
           <EvidenceInboxCard
+            candidateOptions={dashboard.candidateProfiles}
             item={item}
             key={item.id}
             onDecided={onDecided}

@@ -48,6 +48,14 @@ test("candidate cards lead to a complete candidate profile", async () => {
   assert.match(html, /Stated priorities/);
   assert.match(html, /Issue record/);
   assert.match(html, /Original evidence/);
+  assert.match(html, /Campaign evidence/);
+  assert.match(html, /Evidence overview/);
+  assert.match(html, /Overview status/);
+  assert.match(html, /A generated campaign-platform overview has not yet been published/);
+  assert.match(html, /not how they are doing/);
+  assert.match(html, /not a measure of popularity, momentum or likelihood of election/);
+  assert.doesNotMatch(html, /Founder preview|Founder workspace|Private analysis queue|Analysis workflow/);
+  assert.doesNotMatch(html, /reviewer_id|storage_key|Review [0-9a-f]{8}/i);
   assert.match(html, /Animated profile placeholder for Claire Christian/);
   assert.match(html, /Meet another candidate/);
   assert.match(html, /data-profile-reveal/);
