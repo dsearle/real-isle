@@ -1,4 +1,5 @@
 import { getEvidenceBindings } from "../../../db";
+import { ensureEvidenceTriggers } from "./triggers";
 
 export type EvidenceSourceStatus = {
   active: number;
@@ -146,6 +147,7 @@ type CountRow = {
 
 export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
   const { DB: db } = getEvidenceBindings();
+  await ensureEvidenceTriggers(db);
   const [sourceRows, runRows, reviewRows, candidateRows, transcriptRows, countRow, auditRow] =
     await Promise.all([
       db
