@@ -1,3 +1,5 @@
+import { sourceItemVersionReviewGuardSql } from "./review-sql";
+
 const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS audit_event_chain_guard
    BEFORE INSERT ON audit_events
@@ -56,6 +58,7 @@ const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS reviews_no_delete
    BEFORE DELETE ON reviews
    BEGIN SELECT RAISE(ABORT, 'review decisions are immutable'); END`,
+  sourceItemVersionReviewGuardSql,
   `CREATE TRIGGER IF NOT EXISTS transcripts_content_no_update
    BEFORE UPDATE OF job_id, revision_number, parent_transcript_id, candidacy_id,
      source_snapshot_id, title, language, source_kind, producer, producer_version,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import {
@@ -8,6 +9,12 @@ import {
 } from "../app/lib/evidence/candidate-html.ts";
 import { parseFeed } from "../app/lib/evidence/feed.ts";
 import { sha256Hex, stableJson } from "../app/lib/evidence/integrity.ts";
+import { normalizeReviewRationale } from "../app/lib/evidence/review-validation.ts";
+import {
+  insertSourceItemReviewSql,
+  sourceItemVersionReviewGuardSql,
+  updateSourceItemReviewStateSql,
+} from "../app/lib/evidence/review-sql.ts";
 import { candidates, updates } from "../app/lib/data.ts";
 
 test("candidate directory cards retain constituency and portrait provenance", () => {
@@ -171,6 +178,189 @@ test("audit JSON has fixed key ordering and a stable digest", async () => {
     "0002c454dbe710b7f7a95a7a91f68983ea8b50f1a45ec539e6e76fd2d9ccc9dc",
   );
   assert.throws(() => stableJson({ invalid: undefined }), /finite JSON values/);
+});
+
+test("editorial review notes are bounded and rejection reasons are explicit", () => {
+  assert.equal(
+    normalizeReviewRationale("approved", ""),
+    "Approved after reviewing the cited source and captured version.",
+  );
+  assert.equal(
+    normalizeReviewRationale("approved", "  Source and capture checked.  "),
+    "Source and capture checked.",
+  );
+  assert.throws(
+    () => normalizeReviewRationale("rejected", "Too vague"),
+    /at least 20 characters/,
+  );
+  assert.equal(
+    normalizeReviewRationale(
+      "rejected",
+      "This record attributes the statement to the wrong candidate.",
+    ),
+    "This record attributes the statement to the wrong candidate.",
+  );
+  assert.throws(
+    () => normalizeReviewRationale("approved", "x".repeat(501)),
+    /500 characters or fewer/,
+  );
+});
+
+test("source review transition is atomic, stale-safe and invalidated by changed content", () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    database.exec(`
+      CREATE TABLE source_items (
+        id TEXT PRIMARY KEY,
+        latest_version_id TEXT,
+        content_hash TEXT,
+        review_state TEXT NOT NULL,
+        publication_state TEXT NOT NULL,
+        updated_at TEXT
+      );
+      CREATE TABLE source_item_versions (
+        id TEXT PRIMARY KEY,
+        source_item_id TEXT NOT NULL,
+        payload_hash TEXT NOT NULL
+      );
+      CREATE TABLE reviews (
+        id TEXT PRIMARY KEY,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        rationale TEXT NOT NULL,
+        reviewer_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE audit_events (
+        id TEXT PRIMARY KEY,
+        entity_id TEXT NOT NULL
+      );
+    `);
+    database.exec(sourceItemVersionReviewGuardSql);
+    database.prepare(
+      `INSERT INTO source_items
+        (id, latest_version_id, content_hash, review_state, publication_state)
+       VALUES (?, ?, ?, 'unreviewed', 'private')`,
+    ).run("item-a", "version-a", "hash-a");
+    database.prepare(
+      `INSERT INTO source_item_versions (id, source_item_id, payload_hash)
+       VALUES (?, ?, ?)`,
+    ).run("version-a", "item-a", "hash-a");
+
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.prepare(insertSourceItemReviewSql).run(
+        "review-a",
+        "version-a",
+        "approved",
+        "Source and captured version checked.",
+        "reviewer-a",
+        "2026-08-10T10:00:00.000Z",
+      );
+      database.prepare(updateSourceItemReviewStateSql).run(
+        "approved",
+        "approved",
+        "item-a",
+        "version-a",
+        "hash-a",
+      );
+      database.prepare("INSERT INTO audit_events (id, entity_id) VALUES (?, ?)")
+        .run("audit-a", "version-a");
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+
+    assert.deepEqual(
+      { ...database.prepare(
+        "SELECT review_state, publication_state FROM source_items WHERE id = 'item-a'",
+      ).get() },
+      { publication_state: "private", review_state: "approved" },
+    );
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM reviews").get().count, 1);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
+    assert.throws(
+      () => database.prepare(insertSourceItemReviewSql).run(
+        "review-conflict",
+        "version-a",
+        "rejected",
+        "This conflicts with the recorded founder decision.",
+        "reviewer-a",
+        "2026-08-10T10:01:00.000Z",
+      ),
+      /stale or already decided/,
+    );
+
+    database.prepare(
+      `INSERT INTO source_items
+        (id, latest_version_id, content_hash, review_state, publication_state)
+       VALUES (?, ?, ?, 'unreviewed', 'private')`,
+    ).run("item-rejected", "version-rejected", "hash-rejected");
+    database.prepare(
+      "INSERT INTO source_item_versions (id, source_item_id, payload_hash) VALUES (?, ?, ?)",
+    ).run("version-rejected", "item-rejected", "hash-rejected");
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.prepare(insertSourceItemReviewSql).run(
+        "review-rejected",
+        "version-rejected",
+        "rejected",
+        "The source record identifies the wrong candidate in this item.",
+        "reviewer-a",
+        "2026-08-10T10:02:00.000Z",
+      );
+      database.prepare(updateSourceItemReviewStateSql).run(
+        "rejected",
+        "rejected",
+        "item-rejected",
+        "version-rejected",
+        "hash-rejected",
+      );
+      database.prepare("INSERT INTO audit_events (id, entity_id) VALUES (?, ?)")
+        .run("audit-rejected", "version-rejected");
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+    assert.deepEqual(
+      { ...database.prepare(
+        "SELECT review_state, publication_state FROM source_items WHERE id = 'item-rejected'",
+      ).get() },
+      { publication_state: "withheld", review_state: "rejected" },
+    );
+
+    database.prepare(
+      "INSERT INTO source_item_versions (id, source_item_id, payload_hash) VALUES (?, ?, ?)",
+    ).run("version-b", "item-a", "hash-b");
+    database.prepare("UPDATE source_items SET publication_state = 'published' WHERE id = 'item-a'")
+      .run();
+    database.prepare(
+      `UPDATE source_items SET
+         latest_version_id = ?,
+         content_hash = ?,
+         publication_state = CASE
+           WHEN content_hash IS NOT ? AND publication_state = 'published' THEN 'withheld'
+           ELSE publication_state
+         END,
+         review_state = CASE
+           WHEN content_hash IS NOT ? AND review_state IN ('approved', 'rejected')
+             THEN 'needs-update'
+           ELSE review_state
+         END
+       WHERE id = ?`,
+    ).run("version-b", "hash-b", "hash-b", "hash-b", "item-a");
+    assert.deepEqual(
+      { ...database.prepare(
+        "SELECT review_state, publication_state FROM source_items WHERE id = 'item-a'",
+      ).get() },
+      { publication_state: "withheld", review_state: "needs-update" },
+    );
+  } finally {
+    database.close();
+  }
 });
 
 test("constituency interest uses explicit candidate and update associations", () => {

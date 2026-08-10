@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { requireChatGPTUser, type ChatGPTUser } from "../chatgpt-auth";
+import { getChatGPTUser, requireChatGPTUser, type ChatGPTUser } from "../chatgpt-auth";
 
 function commaSeparatedSet(value: string | undefined, normalize = (entry: string) => entry) {
   return new Set(
@@ -17,6 +17,19 @@ export async function getAdminAccess(returnTo: string): Promise<{
   user: ChatGPTUser;
 }> {
   const user = await requireChatGPTUser(returnTo);
+  return adminAccessForUser(user);
+}
+
+export async function getAuthenticatedAdminAccess(): Promise<{
+  allowed: boolean;
+  configured: boolean;
+  user: ChatGPTUser;
+} | null> {
+  const user = await getChatGPTUser();
+  return user ? adminAccessForUser(user) : null;
+}
+
+function adminAccessForUser(user: ChatGPTUser) {
   const allowedIds = commaSeparatedSet(env.ADMIN_USER_IDS);
   const allowedEmails = commaSeparatedSet(env.ADMIN_EMAILS, (email) => email.toLowerCase());
   return {

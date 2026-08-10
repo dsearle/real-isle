@@ -25,6 +25,14 @@ positions and summaries must link to their supporting source records.
    can make derived civic information public; later corrections create a new
    revision rather than erasing history.
 
+Each Evidence Inbox decision is attached to the source item's current immutable
+version and content hash. Approving a version accepts it for editorial use but
+does not publish it. Rejecting a version requires a written reason, withholds
+the item, and retains both the captured source and immutable decision. A later
+publisher change creates a new version and returns the item to `needs-update`,
+so a previous approval or rejection can never silently carry over to changed
+content.
+
 The initial catalogue monitors Manx Radio election and Island feeds, Manx
 Newscast, BBC Isle of Man, Isle of Man Today, Manx Radio and Isle of Man
 Government YouTube feeds, and Tynwald Hansard. A source should not be activated
@@ -155,6 +163,10 @@ Site-specific IDs in `ADMIN_USER_IDS` or founder emails in `ADMIN_EMAILS`; an
 authenticated user who is not on either allowlist sees only their own setup
 identifier and no unpublished evidence. IDs are preferred as collaborators are
 added; the initial owner email is a bootstrap identity for the private Site.
+Approve and Reject controls in the Evidence Inbox call a same-origin,
+authenticated endpoint. The reviewer identity is derived server-side, and the
+review row, state transition and hash-linked audit event are committed in one
+database batch. Approval remains separate from public publication.
 
 For regular checks even when the private site has no visitors,
 `.github/workflows/evidence-ingestion.yml` runs every ten minutes. It is

@@ -43,6 +43,7 @@ export type EvidenceReviewItem = {
   id: string;
   item_type: string;
   latest_snapshot_id: string | null;
+  latest_version_id: string | null;
   publication_state: string;
   published_at: string | null;
   review_state: string;
@@ -175,7 +176,8 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
           `SELECT items.id, items.item_type, items.title, items.summary,
                   items.canonical_url, items.first_seen_at, items.published_at,
                   items.review_state, items.publication_state, items.content_hash,
-                  items.latest_snapshot_id, sources.name AS source_name,
+                  items.latest_snapshot_id, items.latest_version_id,
+                  sources.name AS source_name,
                   GROUP_CONCAT(CASE WHEN entities.entity_type = 'candidacy' THEN entities.entity_id END) AS candidate_ids
            FROM source_items items
            JOIN sources ON sources.id = items.source_id

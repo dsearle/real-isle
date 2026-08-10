@@ -656,6 +656,15 @@ async function processFeedItem(input: {
             external_id = ?, canonical_url = ?, canonical_url_hash = ?, title = ?, summary = ?, author = ?,
             published_at = ?, last_seen_at = ?,
             latest_snapshot_id = ?, latest_version_id = ?, content_hash = ?,
+            publication_state = CASE
+              WHEN content_hash IS NOT ? AND publication_state = 'published' THEN 'withheld'
+              ELSE publication_state
+            END,
+            review_state = CASE
+              WHEN content_hash IS NOT ? AND review_state IN ('approved', 'rejected')
+                THEN 'needs-update'
+              ELSE review_state
+            END,
             updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`,
         )
@@ -670,6 +679,8 @@ async function processFeedItem(input: {
           now,
           snapshotId,
           versionId,
+          payloadHash,
+          payloadHash,
           payloadHash,
           resolvedItemId,
         ),
@@ -1270,6 +1281,20 @@ async function buildCandidateDirectoryStatements(input: {
               WHEN ? = 1 THEN ? ELSE excluded.latest_version_id END,
             content_hash = CASE
               WHEN ? = 1 THEN ? ELSE excluded.content_hash END,
+            publication_state = CASE
+              WHEN ? = 0
+                AND source_items.content_hash IS NOT excluded.content_hash
+                AND source_items.publication_state = 'published'
+                THEN 'withheld'
+              ELSE source_items.publication_state
+            END,
+            review_state = CASE
+              WHEN ? = 0
+                AND source_items.content_hash IS NOT excluded.content_hash
+                AND source_items.review_state IN ('approved', 'rejected')
+                THEN 'needs-update'
+              ELSE source_items.review_state
+            END,
             updated_at = CURRENT_TIMESTAMP`,
         )
         .bind(
@@ -1296,6 +1321,8 @@ async function buildCandidateDirectoryStatements(input: {
           profileVersionId ?? versionId,
           hasParsedProfile ? 1 : 0,
           profileState?.current_profile_payload_hash ?? payloadHash,
+          hasParsedProfile ? 1 : 0,
+          hasParsedProfile ? 1 : 0,
         ),
       input.db
         .prepare(
@@ -1613,7 +1640,16 @@ async function processCandidateProfile(input: {
       .prepare(
         `UPDATE source_items SET
           title = ?, summary = ?, last_seen_at = ?, latest_snapshot_id = ?,
-          latest_version_id = ?, content_hash = ?, updated_at = CURRENT_TIMESTAMP
+          latest_version_id = ?, content_hash = ?,
+          publication_state = CASE
+            WHEN ? = 1 AND publication_state = 'published' THEN 'withheld'
+            ELSE publication_state
+          END,
+          review_state = CASE
+            WHEN ? = 1 AND review_state IN ('approved', 'rejected') THEN 'needs-update'
+            ELSE review_state
+          END,
+          updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
       )
       .bind(
@@ -1623,6 +1659,8 @@ async function processCandidateProfile(input: {
         snapshot.id,
         versionId,
         payloadHash,
+        profileChanged ? 1 : 0,
+        profileChanged ? 1 : 0,
         input.due.source_item_id,
       ),
     db

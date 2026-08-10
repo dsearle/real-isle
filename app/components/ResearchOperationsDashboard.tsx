@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import type {
   CandidateRegistryStatus,
   EvidenceDashboard,
@@ -10,6 +10,19 @@ import type {
 import styles from "./ResearchOperationsDashboard.module.css";
 
 type WorkspaceTab = "overview" | "candidates" | "evidence" | "transcripts" | "sources";
+type ReviewDecision = "approved" | "rejected";
+
+type ReviewReceipt = {
+  auditEventHash: string;
+  auditSequence: number;
+  createdAt: string;
+  decision: ReviewDecision;
+  idempotent: boolean;
+  publicationState: string;
+  reviewId: string;
+  reviewState: ReviewDecision;
+  versionId: string;
+};
 
 const workspaceTabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -113,12 +126,191 @@ function CandidateCoverageCard({ candidate }: { candidate: CandidateRegistryStat
   );
 }
 
-function EvidenceInboxCard({ item }: { item: EvidenceReviewItem }) {
+function ReviewDecisionControls({
+  item,
+  receipt,
+  onDecided,
+}: {
+  item: EvidenceReviewItem;
+  receipt?: ReviewReceipt;
+  onDecided: (receipt: ReviewReceipt) => void;
+}) {
+  const panelId = useId();
+  const approveButtonRef = useRef<HTMLButtonElement>(null);
+  const rejectButtonRef = useRef<HTMLButtonElement>(null);
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const rationaleRef = useRef<HTMLTextAreaElement>(null);
+  const [decision, setDecision] = useState<ReviewDecision | null>(null);
+  const [rationale, setRationale] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const actionable = Boolean(item.latest_version_id && item.content_hash);
+
+  function openDecision(nextDecision: ReviewDecision) {
+    setDecision(nextDecision);
+    setError(null);
+    setRationale("");
+    requestAnimationFrame(() => rationaleRef.current?.focus());
+  }
+
+  function cancelDecision() {
+    const trigger = decision === "approved" ? approveButtonRef : rejectButtonRef;
+    setDecision(null);
+    setError(null);
+    setRationale("");
+    requestAnimationFrame(() => trigger.current?.focus());
+  }
+
+  async function submitDecision(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!decision || !item.latest_version_id || !item.content_hash) return;
+    setPending(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/evidence/review", {
+        body: JSON.stringify({
+          decision,
+          expectedContentHash: item.content_hash,
+          expectedVersionId: item.latest_version_id,
+          itemId: item.id,
+          rationale,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      const result = (await response.json()) as { error?: string; receipt?: ReviewReceipt };
+      if (!response.ok || !result.receipt) {
+        throw new Error(result.error ?? "The review could not be recorded.");
+      }
+      setDecision(null);
+      onDecided(result.receipt);
+      requestAnimationFrame(() => receiptRef.current?.focus());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The review could not be recorded.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (receipt) {
+    return (
+      <div
+        aria-live="polite"
+        className={`${styles.decisionReceipt} ${
+          receipt.decision === "approved"
+            ? styles.decisionReceiptApproved
+            : styles.decisionReceiptRejected
+        }`}
+        ref={receiptRef}
+        tabIndex={-1}
+      >
+        <strong>{receipt.decision === "approved" ? "Approved" : "Rejected and withheld"}</strong>
+        <span>{formatTime(receipt.createdAt)} · Audit #{receipt.auditSequence}</span>
+        <code>{shortHash(receipt.auditEventHash)}</code>
+        <small>The captured version and this decision remain in the audit record.</small>
+      </div>
+    );
+  }
+
+  if (!actionable) {
+    return (
+      <div className={styles.reviewDecisionUnavailable}>
+        This record has no immutable version yet, so it cannot be reviewed safely.
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.reviewDecision}>
+      <div className={styles.reviewActionButtons}>
+        <button
+          aria-expanded={decision === "approved"}
+          aria-controls={decision === "approved" ? panelId : undefined}
+          className={styles.approveButton}
+          disabled={pending}
+          onClick={() => openDecision("approved")}
+          ref={approveButtonRef}
+          type="button"
+        >
+          Approve
+        </button>
+        <button
+          aria-expanded={decision === "rejected"}
+          aria-controls={decision === "rejected" ? panelId : undefined}
+          className={styles.rejectButton}
+          disabled={pending}
+          onClick={() => openDecision("rejected")}
+          ref={rejectButtonRef}
+          type="button"
+        >
+          Reject
+        </button>
+      </div>
+      {decision ? (
+        <form className={styles.decisionPanel} id={panelId} onSubmit={submitDecision}>
+          <fieldset aria-busy={pending} disabled={pending}>
+            <legend>
+              {decision === "approved" ? "Approve this captured version?" : "Reject this captured version?"}
+            </legend>
+            <p className={styles.decisionHelp}>
+              {decision === "approved"
+                ? "Approval accepts this version for editorial use. It does not publish it."
+                : "Rejection keeps the snapshot for audit, records your reason and withholds this item."}
+            </p>
+            <label className={styles.decisionLabel}>
+              <span>{decision === "approved" ? "Review note (optional)" : "Reason for rejection"}</span>
+              <textarea
+                className={styles.rationaleInput}
+                maxLength={500}
+                minLength={decision === "rejected" ? 20 : undefined}
+                onChange={(event) => setRationale(event.target.value)}
+                placeholder={
+                  decision === "approved"
+                    ? "Add anything another reviewer should know"
+                    : "Explain what is inaccurate, unsuitable or needs correction"
+                }
+                required={decision === "rejected"}
+                ref={rationaleRef}
+                value={rationale}
+              />
+            </label>
+            <small className={styles.decisionCounter}>{rationale.length}/500</small>
+            {error ? <p className={styles.decisionError} role="alert">{error}</p> : null}
+            <div className={styles.confirmActions}>
+              <button
+                className={decision === "approved" ? styles.approveButton : styles.rejectButton}
+                type="submit"
+              >
+                {pending
+                  ? decision === "approved" ? "Approving…" : "Rejecting…"
+                  : decision === "approved" ? "Confirm approval" : "Confirm rejection"}
+              </button>
+              <button className={styles.cancelButton} onClick={cancelDecision} type="button">Cancel</button>
+            </div>
+          </fieldset>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
+function EvidenceInboxCard({
+  item,
+  receipt,
+  onDecided,
+}: {
+  item: EvidenceReviewItem;
+  receipt?: ReviewReceipt;
+  onDecided: (receipt: ReviewReceipt) => void;
+}) {
   return (
     <article className={styles.evidenceInboxCard}>
       <div className={styles.cardStateRow}>
         <StatePill state={item.item_type} />
-        <StatePill state={item.review_state} tone="warn" />
+        <StatePill
+          state={receipt?.reviewState ?? item.review_state}
+          tone={receipt?.reviewState === "approved" ? "good" : "warn"}
+        />
       </div>
       <p className={styles.inboxSource}>{item.source_name} · {formatTime(item.published_at ?? item.first_seen_at)}</p>
       <h3>{item.title}</h3>
@@ -128,6 +320,7 @@ function EvidenceInboxCard({ item }: { item: EvidenceReviewItem }) {
         <code>{shortHash(item.content_hash)}</code>
       </div>
       <a href={item.canonical_url} rel="noreferrer" target="_blank">Inspect original source ↗</a>
+      <ReviewDecisionControls item={item} onDecided={onDecided} receipt={receipt} />
     </article>
   );
 }
@@ -171,7 +364,13 @@ function TranscriptCard({ item }: { item: TranscriptQueueItem }) {
   );
 }
 
-function OverviewPanel({ dashboard }: { dashboard: EvidenceDashboard }) {
+function OverviewPanel({
+  dashboard,
+  decidedCount,
+}: {
+  dashboard: EvidenceDashboard;
+  decidedCount: number;
+}) {
   const unhealthySources = dashboard.sources.filter(
     (source) => source.consecutive_failures > 0 || source.last_error,
   );
@@ -200,7 +399,7 @@ function OverviewPanel({ dashboard }: { dashboard: EvidenceDashboard }) {
         <div><strong>{dashboard.counts.candidateLinks}</strong><span>candidate links</span><small>social, contact and media</small></div>
         <div><strong>{dashboard.counts.candidateDocuments}</strong><span>documents found</span><small>manifestos and transcripts</small></div>
         <div><strong>{dashboard.counts.transcriptSources}</strong><span>transcript inputs</span><small>{dashboard.counts.transcriptsReadyForReview} ready to review</small></div>
-        <div><strong>{dashboard.counts.pendingEditorial}</strong><span>records need review</span><small>decision workflow next</small></div>
+        <div><strong>{Math.max(0, dashboard.counts.pendingEditorial - decidedCount)}</strong><span>records need review</span><small>founder decisions are audited</small></div>
         <div><strong>{dashboard.counts.claims}</strong><span>claim proposals</span><small>none published by automation</small></div>
       </section>
 
@@ -215,7 +414,7 @@ function OverviewPanel({ dashboard }: { dashboard: EvidenceDashboard }) {
           <li><b>03</b><strong>Resolve</strong><span>{dashboard.counts.candidates} candidate identities</span></li>
           <li><b>04</b><strong>Transcribe</strong><span>{dashboard.counts.transcriptSources} inputs discovered</span></li>
           <li><b>05</b><strong>Extract</strong><span>private claim proposals</span></li>
-          <li><b>06</b><strong>Review</strong><span>authenticated decisions next</span></li>
+          <li><b>06</b><strong>Review</strong><span>authenticated, versioned decisions</span></li>
           <li><b>07</b><strong>Publish</strong><span>source-linked revisions</span></li>
         </ol>
       </section>
@@ -287,7 +486,15 @@ function CandidatesPanel({ dashboard }: { dashboard: EvidenceDashboard }) {
   );
 }
 
-function EvidencePanel({ dashboard }: { dashboard: EvidenceDashboard }) {
+function EvidencePanel({
+  dashboard,
+  receipts,
+  onDecided,
+}: {
+  dashboard: EvidenceDashboard;
+  receipts: Record<string, ReviewReceipt>;
+  onDecided: (receipt: ReviewReceipt) => void;
+}) {
   return (
     <div className={styles.panelStack}>
       <section className={styles.panelIntro}>
@@ -295,7 +502,14 @@ function EvidencePanel({ dashboard }: { dashboard: EvidenceDashboard }) {
         <p>These records are private. The source URL, capture pointer and content hash remain attached even if the publisher later changes or removes the page.</p>
       </section>
       {dashboard.reviewItems.length ? (
-        <div className={styles.evidenceInboxGrid}>{dashboard.reviewItems.map((item) => <EvidenceInboxCard item={item} key={item.id} />)}</div>
+        <div className={styles.evidenceInboxGrid}>{dashboard.reviewItems.map((item) => (
+          <EvidenceInboxCard
+            item={item}
+            key={item.id}
+            onDecided={onDecided}
+            receipt={item.latest_version_id ? receipts[item.latest_version_id] : undefined}
+          />
+        ))}</div>
       ) : (
         <div className={styles.emptyState}><strong>The evidence inbox is clear.</strong><span>New source records will appear after the next successful monitor run.</span></div>
       )}
@@ -365,6 +579,8 @@ export function ResearchOperationsDashboard({
   reviewerName: string;
 }) {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
+  const [reviewReceipts, setReviewReceipts] = useState<Record<string, ReviewReceipt>>({});
+  const decidedCount = Object.keys(reviewReceipts).length;
   if (!dashboard) {
     return <section className={styles.unavailable}><span>Evidence store</span><h2>The research database is not available in this runtime.</h2><p>No unpublished records have been exposed. Apply the current D1 migrations and retry.</p></section>;
   }
@@ -384,15 +600,24 @@ export function ResearchOperationsDashboard({
             type="button"
           >
             {tab.label}
-            {tab.id === "evidence" ? <b>{dashboard.counts.pendingReview}</b> : null}
+            {tab.id === "evidence" ? <b>{Math.max(0, dashboard.counts.pendingReview - decidedCount)}</b> : null}
             {tab.id === "transcripts" ? <b>{dashboard.counts.transcriptSources}</b> : null}
           </button>
         ))}
       </nav>
       <div aria-label={`${workspaceTabs.find((tab) => tab.id === activeTab)?.label} workspace`} role="region">
-        {activeTab === "overview" ? <OverviewPanel dashboard={dashboard} /> : null}
+        {activeTab === "overview" ? <OverviewPanel dashboard={dashboard} decidedCount={decidedCount} /> : null}
         {activeTab === "candidates" ? <CandidatesPanel dashboard={dashboard} /> : null}
-        {activeTab === "evidence" ? <EvidencePanel dashboard={dashboard} /> : null}
+        {activeTab === "evidence" ? (
+          <EvidencePanel
+            dashboard={dashboard}
+            onDecided={(receipt) => setReviewReceipts((current) => ({
+              ...current,
+              [receipt.versionId]: receipt,
+            }))}
+            receipts={reviewReceipts}
+          />
+        ) : null}
         {activeTab === "transcripts" ? <TranscriptsPanel dashboard={dashboard} /> : null}
         {activeTab === "sources" ? <SourcesPanel dashboard={dashboard} /> : null}
       </div>

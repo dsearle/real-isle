@@ -401,6 +401,157 @@
 .evidenceMeta span { color: #617578; font-size: 8px; }
 .evidenceMeta code { font-size: 8px; }
 
+.reviewDecision,
+.reviewDecisionUnavailable,
+.decisionReceipt {
+  border-top: 1px solid rgba(18, 50, 56, .15);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.reviewActionButtons,
+.confirmActions {
+  display: flex;
+  gap: 8px;
+}
+
+.approveButton,
+.rejectButton,
+.cancelButton {
+  align-items: center;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  font: 800 11px/1 ui-sans-serif, system-ui, sans-serif;
+  justify-content: center;
+  min-height: 44px;
+  padding: 11px 16px;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.approveButton {
+  background: #24694f;
+  border: 1px solid #24694f;
+  color: #fffdf7;
+}
+
+.rejectButton {
+  background: #fffdf7;
+  border: 1px solid #a84f3d;
+  color: #8f3e2f;
+}
+
+.cancelButton {
+  background: transparent;
+  border: 1px solid rgba(18, 50, 56, .3);
+  color: #37565a;
+}
+
+.approveButton:hover:not(:disabled),
+.rejectButton:hover:not(:disabled),
+.cancelButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.approveButton:hover:not(:disabled) { background: #1c5942; }
+.rejectButton:hover:not(:disabled) { background: #f7e9e3; }
+.approveButton:disabled,
+.rejectButton:disabled,
+.cancelButton:disabled { cursor: wait; opacity: .62; }
+
+.decisionPanel {
+  background: #f3eee4;
+  border: 1px solid rgba(18, 50, 56, .14);
+  border-radius: 9px;
+  margin-top: 10px;
+  padding: 15px;
+}
+
+.decisionPanel fieldset {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.decisionPanel legend {
+  color: #123238;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0;
+}
+
+.decisionHelp {
+  color: #587074;
+  font-size: 10px;
+  line-height: 1.55;
+  margin: 8px 0 12px;
+}
+
+.decisionLabel {
+  display: grid;
+  gap: 6px;
+}
+
+.decisionLabel > span {
+  color: #274a4f;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.rationaleInput {
+  background: #fffdf7;
+  border: 1px solid rgba(18, 50, 56, .3);
+  border-radius: 7px;
+  color: #123238;
+  font: 500 12px/1.5 ui-sans-serif, system-ui, sans-serif;
+  min-height: 96px;
+  padding: 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.decisionCounter {
+  color: #6b7d80;
+  display: block;
+  font-size: 8px;
+  margin: 5px 0 10px;
+  text-align: right;
+}
+
+.decisionError {
+  background: #f7e4de;
+  border-left: 3px solid #a84f3d;
+  color: #773427;
+  font-size: 10px;
+  line-height: 1.45;
+  margin: 0 0 10px;
+  padding: 9px 10px;
+}
+
+.decisionReceipt {
+  display: grid;
+  gap: 5px;
+  padding-left: 12px;
+}
+
+.decisionReceiptApproved { border-left: 3px solid #24694f; }
+.decisionReceiptRejected { border-left: 3px solid #a84f3d; }
+.decisionReceipt strong { color: #123238; font-size: 12px; }
+.decisionReceipt span,
+.decisionReceipt small { color: #5c7174; font-size: 9px; line-height: 1.45; }
+.decisionReceipt code { color: #37565a; font-size: 8px; }
+
+.reviewDecisionUnavailable {
+  color: #6b7d80;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
 .transcriptModel { display: grid; gap: 8px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .transcriptModel article { background: #123238; border-radius: 9px; color: #fffdf7; display: grid; min-height: 150px; padding: 16px; }
 .transcriptModel b { color: #f0cd68; font-family: Georgia, "Times New Roman", serif; font-size: 22px; }
@@ -511,6 +662,10 @@
   .transcriptRoute { align-items: stretch; flex-direction: column; }
   .transcriptRoute i { rotate: 90deg; text-align: center; }
   .fullRunList dl { grid-template-columns: repeat(5, minmax(45px, 1fr)); overflow-x: auto; }
+  .reviewActionButtons,
+  .confirmActions { flex-direction: column; }
+  .reviewActionButtons button,
+  .confirmActions button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
