@@ -66,6 +66,8 @@ export type HomeCandidate = {
   evidenceCount: number;
   initials: string;
   name: string;
+  /** App-owned portrait URL that has already passed public reuse and publication review. */
+  portraitUrl?: string | null;
   priorities: readonly string[];
   slug: string;
   status: string;
@@ -88,6 +90,66 @@ export type HomeUpdate = {
 
 function byNewest(left: HomeUpdate, right: HomeUpdate) {
   return right.sortDate.localeCompare(left.sortDate);
+}
+
+function CandidatePortrait({
+  candidate,
+  className = "",
+}: {
+  candidate: HomeCandidate;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`${styles.playerPortrait} ${className}`.trim()}
+    >
+      {candidate.portraitUrl ? (
+        // This URL is deliberately restricted to an app-owned, rights-cleared public asset.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          alt=""
+          decoding="async"
+          height={160}
+          loading="lazy"
+          src={candidate.portraitUrl}
+          width={128}
+        />
+      ) : (
+        <span className={styles.playerMonogram}>{candidate.initials}</span>
+      )}
+    </span>
+  );
+}
+
+function CandidatePlayerCard({
+  candidate,
+  constituencyName,
+  variant,
+}: {
+  candidate: HomeCandidate;
+  constituencyName: string;
+  variant: "mini" | "selected" | "mobile";
+}) {
+  const variantClass = variant === "mini"
+    ? styles.atlasPlayerCardMini
+    : variant === "selected"
+      ? styles.atlasPlayerCardSelected
+      : styles.atlasPlayerCardMobile;
+
+  return (
+    <a
+      aria-label={`Open evidence profile for ${candidate.name}, ${constituencyName}`}
+      className={`${styles.atlasPlayerCard} ${variantClass}`}
+      href={`/candidates/${candidate.slug}`}
+    >
+      <CandidatePortrait candidate={candidate} />
+      <span className={styles.atlasPlayerCopy}>
+        <strong>{candidate.name}</strong>
+        {variant === "mini" ? null : <small>{candidate.status} · Profile ↗</small>}
+      </span>
+    </a>
+  );
 }
 
 function RegionChooser({
@@ -154,8 +216,8 @@ function CandidateCollection({
     <div className={styles.candidateGrid}>
       {candidates.map((candidate) => (
         <a className={styles.candidateCard} href={`/candidates/${candidate.slug}`} key={candidate.slug}>
-          <div className={styles.candidateAvatar} aria-label={`${candidate.name} portrait pending rights clearance`} role="img">
-            <span>{candidate.initials}</span>
+          <div className={styles.candidateAvatar}>
+            <CandidatePortrait candidate={candidate} className={styles.candidatePortraitFrame} />
           </div>
           <div className={styles.candidateCopy}>
             <div>
@@ -233,7 +295,7 @@ function CandidateAtlasMap({
   }));
 
   return (
-    <div className={styles.atlasMapStage}>
+    <div className={`${styles.atlasMapStage} ${selected ? styles.atlasMapStageSelected : ""}`}>
       <h1 className={styles.visuallyHidden}>The People’s Isle — Your Isle, Your Future</h1>
       <p className={styles.visuallyHidden}>
         Your selected area is saved only on this device. No account, address or postcode is requested.
@@ -307,40 +369,33 @@ function CandidateAtlasMap({
               {areaCandidates.length ? (
                 <>
                   {!isSelected ? (
-                    <div className={styles.atlasPortraitPipsDesktop}>
+                    <div className={styles.atlasPlayerDeck}>
                       {areaCandidates.map((candidate) => (
-                        <a
-                          aria-label={`Open evidence profile for ${candidate.name}, ${constituency.name}`}
-                          href={`/candidates/${candidate.slug}`}
+                        <CandidatePlayerCard
+                          candidate={candidate}
+                          constituencyName={constituency.name}
                           key={candidate.slug}
-                          onClick={() => onSelect(constituency.id)}
-                        >
-                          <span aria-hidden="true">{candidate.initials}</span>
-                          <strong>{candidate.name}</strong>
-                        </a>
+                          variant="mini"
+                        />
                       ))}
                     </div>
                   ) : null}
-                  <div className={styles.atlasPortraitPipsMobile} aria-hidden="true">
+                  <div className={styles.atlasPlayerDeckMobile} aria-hidden="true">
                     {areaCandidates.map((candidate) => (
-                      <span key={candidate.slug}>{candidate.initials}</span>
+                      <span className={styles.atlasPlayerPreview} key={candidate.slug}>
+                        <CandidatePortrait candidate={candidate} />
+                      </span>
                     ))}
                   </div>
                   {isSelected ? (
                     <div className={styles.atlasProfiles}>
-                      {areaCandidates.map((candidate, index) => (
-                        <a
-                          aria-label={`Open evidence profile for ${candidate.name}, ${constituency.name}`}
-                          className={styles.atlasProfileCard}
-                          href={`/candidates/${candidate.slug}`}
+                      {areaCandidates.map((candidate) => (
+                        <CandidatePlayerCard
+                          candidate={candidate}
+                          constituencyName={constituency.name}
                           key={candidate.slug}
-                          onClick={() => onSelect(constituency.id)}
-                          style={{ animationDelay: `${index * 240}ms` }}
-                        >
-                          <span aria-hidden="true">{candidate.initials}</span>
-                          <strong>{candidate.name}</strong>
-                          <small>Evidence profile ↗</small>
-                        </a>
+                          variant="selected"
+                        />
                       ))}
                     </div>
                   ) : null}
@@ -366,10 +421,12 @@ function CandidateAtlasMap({
           {selectedCandidates.length ? (
             <nav aria-label={`Reviewed candidate profiles for ${selected.name}`}>
               {selectedCandidates.map((candidate) => (
-                <a href={`/candidates/${candidate.slug}`} key={candidate.slug}>
-                  <span aria-hidden="true">{candidate.initials}</span>
-                  <strong>{candidate.name}</strong>
-                </a>
+                <CandidatePlayerCard
+                  candidate={candidate}
+                  constituencyName={selected.name}
+                  key={candidate.slug}
+                  variant="mobile"
+                />
               ))}
             </nav>
           ) : (

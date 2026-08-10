@@ -981,6 +981,134 @@ async function candidateDocumentStatement(input: {
     );
 }
 
+function youtubeVideoId(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    let candidate = "";
+    if (host === "youtu.be") candidate = url.pathname.split("/").filter(Boolean)[0] ?? "";
+    if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+      candidate = url.searchParams.get("v") ?? "";
+      if (!candidate) {
+        const parts = url.pathname.split("/").filter(Boolean);
+        const marker = parts.findIndex((part) => part === "embed" || part === "shorts" || part === "live");
+        candidate = marker >= 0 ? parts[marker + 1] ?? "" : "";
+      }
+    }
+    return /^[\w-]{6,20}$/.test(candidate) ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
+function mediaPlatform(rawUrl: string) {
+  const host = new URL(rawUrl).hostname.toLowerCase().replace(/^www\./, "");
+  if (host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") {
+    return "youtube";
+  }
+  if (host === "captivate.fm" || host.endsWith(".captivate.fm")) return "captivate";
+  return host;
+}
+
+async function transcriptJobFromLinkStatement(input: {
+  candidacyId: string;
+  db: D1Database;
+  link: CandidateProfileLink;
+  observedAt: string;
+  observationId: string;
+  snapshotId: string;
+}) {
+  const videoId = youtubeVideoId(input.link.url);
+  const isAudio = input.link.kind === "interview-audio";
+  const isInterviewVideo = input.link.kind === "interview-video";
+  if (!videoId && !isAudio && !isInterviewVideo) return null;
+
+  const urlHash = await sha256Hex(input.link.url);
+  const linkId = await deterministicId("candidate-link", input.candidacyId, urlHash);
+  const inputKind = videoId ? "youtube-caption" : "media-transcription";
+  const id = await deterministicId("transcript-job", input.candidacyId, urlHash, inputKind);
+  return input.db
+    .prepare(
+      `INSERT INTO transcript_jobs (
+        id, candidacy_id, candidate_link_id, source_observation_id, source_snapshot_id,
+        input_kind, platform, source_url, source_url_hash, external_media_id,
+        access_state, rights_state, processing_state, first_seen_at, last_seen_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'permission-required', 'link-only', 'discovered', ?, ?)
+      ON CONFLICT(candidacy_id, source_url_hash, input_kind) DO UPDATE SET
+        external_media_id = COALESCE(excluded.external_media_id, transcript_jobs.external_media_id),
+        access_state = CASE
+          WHEN transcript_jobs.access_state = 'withdrawn' THEN 'permission-required'
+          ELSE transcript_jobs.access_state END,
+        processing_state = CASE
+          WHEN transcript_jobs.processing_state = 'removed' THEN 'discovered'
+          ELSE transcript_jobs.processing_state END,
+        last_seen_at = excluded.last_seen_at,
+        updated_at = CURRENT_TIMESTAMP`,
+    )
+    .bind(
+      id,
+      input.candidacyId,
+      linkId,
+      input.observationId,
+      input.snapshotId,
+      inputKind,
+      mediaPlatform(input.link.url),
+      input.link.url,
+      urlHash,
+      videoId,
+      input.observedAt,
+      input.observedAt,
+    );
+}
+
+async function transcriptJobFromDocumentStatement(input: {
+  candidacyId: string;
+  db: D1Database;
+  document: CandidateProfileDocument;
+  observedAt: string;
+  observationId: string;
+  snapshotId: string;
+}) {
+  if (input.document.kind !== "transcript") return null;
+  const urlHash = await sha256Hex(input.document.url);
+  const documentId = await deterministicId("candidate-document", input.candidacyId, urlHash);
+  const id = await deterministicId(
+    "transcript-job",
+    input.candidacyId,
+    urlHash,
+    "publisher-transcript",
+  );
+  return input.db
+    .prepare(
+      `INSERT INTO transcript_jobs (
+        id, candidacy_id, candidate_document_id, source_observation_id, source_snapshot_id,
+        input_kind, platform, source_url, source_url_hash, access_state, rights_state, processing_state,
+        first_seen_at, last_seen_at
+      ) VALUES (?, ?, ?, ?, ?, 'publisher-transcript', ?, ?, ?, 'public-transcript-linked', 'unknown', 'discovered', ?, ?)
+      ON CONFLICT(candidacy_id, source_url_hash, input_kind) DO UPDATE SET
+        access_state = CASE
+          WHEN transcript_jobs.access_state = 'withdrawn' THEN 'public-transcript-linked'
+          ELSE transcript_jobs.access_state END,
+        processing_state = CASE
+          WHEN transcript_jobs.processing_state = 'removed' THEN 'discovered'
+          ELSE transcript_jobs.processing_state END,
+        last_seen_at = excluded.last_seen_at,
+        updated_at = CURRENT_TIMESTAMP`,
+    )
+    .bind(
+      id,
+      input.candidacyId,
+      documentId,
+      input.observationId,
+      input.snapshotId,
+      mediaPlatform(input.document.url),
+      input.document.url,
+      urlHash,
+      input.observedAt,
+      input.observedAt,
+    );
+}
+
 async function buildCandidateDirectoryStatements(input: {
   db: D1Database;
   entries: ReturnType<typeof parseCandidateDirectory>;
@@ -1337,6 +1465,30 @@ async function buildCandidateDirectoryStatements(input: {
       .bind(observedAt),
     input.db
       .prepare(
+        `UPDATE transcripts SET
+          publication_state = CASE
+            WHEN publication_state = 'published' THEN 'withheld' ELSE publication_state END,
+          review_state = CASE
+            WHEN review_state = 'approved' THEN 'needs-update' ELSE review_state END,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE candidacy_id IN (
+           SELECT candidacy_id FROM candidate_profiles WHERE last_directory_seen_at != ?
+         )`,
+      )
+      .bind(observedAt),
+    input.db
+      .prepare(
+        `UPDATE transcript_jobs SET
+          access_state = 'withdrawn', processing_state = 'removed',
+          lease_token = NULL, lease_expires_at = NULL, next_attempt_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE candidacy_id IN (
+           SELECT candidacy_id FROM candidate_profiles WHERE last_directory_seen_at != ?
+         )`,
+      )
+      .bind(observedAt),
+    input.db
+      .prepare(
         `UPDATE candidate_media_assets SET
           publication_state = CASE
             WHEN publication_state = 'published' THEN 'withheld' ELSE publication_state END,
@@ -1527,6 +1679,15 @@ async function processCandidateProfile(input: {
         observationId,
       }),
     );
+    const transcriptJob = await transcriptJobFromLinkStatement({
+      candidacyId: input.due.candidacy_id,
+      db,
+      link,
+      observedAt,
+      observationId,
+      snapshotId: snapshot.id,
+    });
+    if (transcriptJob) statements.push(transcriptJob);
   }
   for (const portrait of parsed.portraits) {
     statements.push(
@@ -1556,6 +1717,15 @@ async function processCandidateProfile(input: {
         snapshotId: snapshot.id,
       }),
     );
+    const transcriptJob = await transcriptJobFromDocumentStatement({
+      candidacyId: input.due.candidacy_id,
+      db,
+      document,
+      observedAt,
+      observationId,
+      snapshotId: snapshot.id,
+    });
+    if (transcriptJob) statements.push(transcriptJob);
   }
 
   statements.push(
@@ -1590,6 +1760,35 @@ async function processCandidateProfile(input: {
             WHEN review_state = 'approved' THEN 'needs-update' ELSE review_state END,
           updated_at = CURRENT_TIMESTAMP
          WHERE candidacy_id = ? AND variant != 'directory-thumbnail' AND last_seen_at != ?`,
+      )
+      .bind(input.due.candidacy_id, observedAt),
+    db
+      .prepare(
+        `UPDATE transcripts SET
+          publication_state = CASE
+            WHEN publication_state = 'published' THEN 'withheld' ELSE publication_state END,
+          review_state = CASE
+            WHEN review_state = 'approved' THEN 'needs-update' ELSE review_state END,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE job_id IN (
+           SELECT jobs.id FROM transcript_jobs jobs
+           LEFT JOIN candidate_links links ON links.id = jobs.candidate_link_id
+           LEFT JOIN candidate_documents documents ON documents.id = jobs.candidate_document_id
+           WHERE jobs.candidacy_id = ?
+             AND jobs.input_kind != 'manual-upload'
+             AND jobs.last_seen_at != ?
+         )`,
+      )
+      .bind(input.due.candidacy_id, observedAt),
+    db
+      .prepare(
+        `UPDATE transcript_jobs SET
+          access_state = 'withdrawn', processing_state = 'removed',
+          lease_token = NULL, lease_expires_at = NULL, next_attempt_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+         WHERE candidacy_id = ?
+           AND input_kind != 'manual-upload'
+           AND last_seen_at != ?`,
       )
       .bind(input.due.candidacy_id, observedAt),
   );

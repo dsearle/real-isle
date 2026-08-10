@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 import { Header } from "../../components/Header";
-import { EvidenceMonitorPanel } from "../../components/EvidenceMonitorPanel";
-import { ReviewQueue } from "../../components/ReviewQueue";
+import { ResearchOperationsDashboard } from "../../components/ResearchOperationsDashboard";
 import { getAdminAccess } from "../../lib/admin-auth";
 import { getEvidenceDashboardSafe } from "../../lib/evidence/status";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Founder review prototype",
+  title: "Research operations",
   robots: { index: false, follow: false },
 };
 
@@ -22,7 +21,7 @@ export default async function ReviewPage() {
           <p className="eyebrow eyebrow-dark">Founder workspace · protected</p>
           <h1>Admin access is locked</h1>
           <p>
-            You are signed in, but this Site-specific account has not been added to the
+            You are signed in, but this Site-specific account has not been added to
             The People’s Isle administrator allowlist.
           </p>
           <div className="admin-identity-card">
@@ -32,8 +31,8 @@ export default async function ReviewPage() {
             <code>{access.user.userId}</code>
           </div>
           <p className="admin-access-note">
-            Add this user ID to the private <code>ADMIN_USER_IDS</code> runtime variable. No
-            unpublished evidence has been loaded on this page.
+            Add this user ID to <code>ADMIN_USER_IDS</code> or the signed-in email to{" "}
+            <code>ADMIN_EMAILS</code>. No unpublished evidence has been loaded on this page.
           </p>
         </section>
       </main>
@@ -43,21 +42,10 @@ export default async function ReviewPage() {
   return (
     <main className="admin-page">
       <Header />
-      <section className="admin-shell">
-        <div className="admin-heading">
-          <div>
-            <p className="eyebrow eyebrow-dark">Founder workspace · protected preview</p>
-            <h1>Evidence review</h1>
-            <p>Automated pulls remain private. Every publication decision must point to a captured source and an immutable review event.</p>
-          </div>
-          <div className="reviewer-chip">
-            <span>DS</span>
-            <div><strong>{access.user.displayName}</strong><small>Founder reviewer</small></div>
-          </div>
-        </div>
-        <EvidenceMonitorPanel dashboard={dashboard} />
-        <ReviewQueue />
-      </section>
+      <ResearchOperationsDashboard
+        dashboard={dashboard}
+        reviewerName={access.user.displayName}
+      />
     </main>
   );
 }

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnySQLiteColumn,
   check,
   index,
   integer,
@@ -481,6 +482,7 @@ export const candidateMediaAssets = sqliteTable(
     sourceSnapshotId: text("source_snapshot_id")
       .notNull()
       .references(() => sourceSnapshots.id),
+    contentSnapshotId: text("content_snapshot_id").references(() => sourceSnapshots.id),
     rightsState: text("rights_state").notNull().default("unknown"),
     reuseBasis: text("reuse_basis"),
     attribution: text("attribution"),
@@ -512,6 +514,8 @@ export const candidateMediaAssets = sqliteTable(
       "candidate_media_publish_rights_check",
       sql`${table.publicationState} != 'published' OR (
         ${table.reviewState} = 'approved'
+        AND ${table.contentSnapshotId} IS NOT NULL
+        AND ${table.contentHash} IS NOT NULL
         AND ${table.storageKey} IS NOT NULL
         AND ${table.retentionOutcome} = 'stored-publishable'
         AND ${table.rightsState} IN ('candidate-permission', 'redistributable')
@@ -537,9 +541,13 @@ export const candidateDocuments = sqliteTable(
     sourceSnapshotId: text("source_snapshot_id")
       .notNull()
       .references(() => sourceSnapshots.id),
+    contentSnapshotId: text("content_snapshot_id").references(() => sourceSnapshots.id),
     rightsState: text("rights_state").notNull().default("unknown"),
+    reuseBasis: text("reuse_basis"),
+    attribution: text("attribution"),
     contentHash: text("content_hash"),
     storageKey: text("storage_key"),
+    retentionOutcome: text("retention_outcome").notNull().default("metadata-only"),
     processingState: text("processing_state").notNull().default("discovered"),
     reviewState: text("review_state").notNull().default("unreviewed"),
     publicationState: text("publication_state").notNull().default("private"),
@@ -559,8 +567,241 @@ export const candidateDocuments = sqliteTable(
       sql`${table.documentKind} IN ('manifesto', 'transcript', 'statement', 'other')`,
     ),
     check(
-      "candidate_documents_publish_requires_review_check",
-      sql`${table.publicationState} != 'published' OR ${table.reviewState} = 'approved'`,
+      "candidate_documents_rights_check",
+      sql`${table.rightsState} IN ('unknown', 'link-only', 'candidate-permission', 'publisher-permission', 'redistributable', 'takedown')`,
+    ),
+    check(
+      "candidate_documents_retention_check",
+      sql`${table.retentionOutcome} IN ('metadata-only', 'stored-private', 'stored-publishable', 'removed')`,
+    ),
+    check(
+      "candidate_documents_publish_requires_rights_check",
+      sql`${table.publicationState} != 'published' OR (
+        ${table.reviewState} = 'approved'
+        AND ${table.contentSnapshotId} IS NOT NULL
+        AND ${table.contentHash} IS NOT NULL
+        AND ${table.storageKey} IS NOT NULL
+        AND ${table.retentionOutcome} = 'stored-publishable'
+        AND ${table.rightsState} IN ('candidate-permission', 'publisher-permission', 'redistributable')
+      )`,
+    ),
+  ],
+);
+
+export const transcriptJobs = sqliteTable(
+  "transcript_jobs",
+  {
+    id: text("id").primaryKey(),
+    candidacyId: text("candidacy_id")
+      .notNull()
+      .references(() => candidacies.id),
+    candidateDocumentId: text("candidate_document_id").references(() => candidateDocuments.id),
+    candidateLinkId: text("candidate_link_id").references(() => candidateLinks.id),
+    sourceObservationId: text("source_observation_id")
+      .notNull()
+      .references(() => candidateProfileObservations.id),
+    sourceSnapshotId: text("source_snapshot_id")
+      .notNull()
+      .references(() => sourceSnapshots.id),
+    inputKind: text("input_kind").notNull(),
+    platform: text("platform").notNull(),
+    sourceUrl: text("source_url").notNull(),
+    sourceUrlHash: text("source_url_hash").notNull(),
+    externalMediaId: text("external_media_id"),
+    language: text("language").notNull().default("en"),
+    accessState: text("access_state").notNull().default("not-checked"),
+    rightsState: text("rights_state").notNull().default("unknown"),
+    retentionOutcome: text("retention_outcome").notNull().default("metadata-only"),
+    processingState: text("processing_state").notNull().default("discovered"),
+    priority: integer("priority").notNull().default(0),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at"),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: text("lease_expires_at"),
+    lastError: text("last_error"),
+    startedAt: text("started_at"),
+    finishedAt: text("finished_at"),
+    firstSeenAt: text("first_seen_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_transcript_jobs_candidate_source_kind").on(
+      table.candidacyId,
+      table.sourceUrlHash,
+      table.inputKind,
+    ),
+    index("idx_transcript_jobs_due").on(table.processingState, table.nextAttemptAt, table.priority),
+    index("idx_transcript_jobs_candidate").on(table.candidacyId, table.lastSeenAt),
+    check(
+      "transcript_jobs_single_input_check",
+      sql`(${table.candidateDocumentId} IS NOT NULL AND ${table.candidateLinkId} IS NULL) OR (${table.candidateDocumentId} IS NULL AND ${table.candidateLinkId} IS NOT NULL)`,
+    ),
+    check(
+      "transcript_jobs_input_kind_check",
+      sql`${table.inputKind} IN ('publisher-transcript', 'youtube-caption', 'media-transcription', 'manual-upload')`,
+    ),
+    check(
+      "transcript_jobs_rights_check",
+      sql`${table.rightsState} IN ('unknown', 'link-only', 'candidate-permission', 'publisher-permission', 'redistributable')`,
+    ),
+    check(
+      "transcript_jobs_access_check",
+      sql`${table.accessState} IN ('not-checked', 'metadata-only', 'public-transcript-linked', 'owner-authorized', 'permission-required', 'unavailable', 'withdrawn', 'error')`,
+    ),
+    check(
+      "transcript_jobs_retention_check",
+      sql`${table.retentionOutcome} IN ('metadata-only', 'stored-private', 'stored-publishable', 'removed')`,
+    ),
+    check(
+      "transcript_jobs_processing_check",
+      sql`${table.processingState} IN ('discovered', 'queued', 'fetching', 'extracting', 'transcribing', 'normalizing', 'ready-for-review', 'failed', 'superseded', 'removed')`,
+    ),
+    check("transcript_jobs_attempt_count_check", sql`${table.attemptCount} >= 0`),
+    check(
+      "transcript_jobs_lease_pair_check",
+      sql`(${table.leaseToken} IS NULL AND ${table.leaseExpiresAt} IS NULL) OR (${table.leaseToken} IS NOT NULL AND ${table.leaseExpiresAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const transcripts = sqliteTable(
+  "transcripts",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => transcriptJobs.id),
+    revisionNumber: integer("revision_number").notNull().default(1),
+    parentTranscriptId: text("parent_transcript_id").references(
+      (): AnySQLiteColumn => transcripts.id,
+    ),
+    candidacyId: text("candidacy_id")
+      .notNull()
+      .references(() => candidacies.id),
+    sourceSnapshotId: text("source_snapshot_id")
+      .notNull()
+      .references(() => sourceSnapshots.id),
+    title: text("title").notNull(),
+    language: text("language").notNull().default("en"),
+    sourceKind: text("source_kind").notNull(),
+    producer: text("producer").notNull(),
+    producerVersion: text("producer_version").notNull().default("unspecified"),
+    configHash: text("config_hash").notNull(),
+    contentHash: text("content_hash").notNull(),
+    storageKey: text("storage_key").notNull(),
+    wordCount: integer("word_count").notNull().default(0),
+    durationSeconds: real("duration_seconds"),
+    segmentCount: integer("segment_count").notNull().default(0),
+    qualityState: text("quality_state").notNull().default("unassessed"),
+    rightsState: text("rights_state").notNull().default("unknown"),
+    retentionOutcome: text("retention_outcome").notNull().default("stored-private"),
+    reviewState: text("review_state").notNull().default("unreviewed"),
+    publicationState: text("publication_state").notNull().default("private"),
+    generatedAt: text("generated_at").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_transcripts_job_revision").on(table.jobId, table.revisionNumber),
+    uniqueIndex("idx_transcripts_generation_identity").on(
+      table.jobId,
+      table.contentHash,
+      table.producer,
+      table.producerVersion,
+      table.configHash,
+    ),
+    index("idx_transcripts_job").on(table.jobId),
+    index("idx_transcripts_candidate_generated").on(table.candidacyId, table.generatedAt),
+    index("idx_transcripts_review").on(table.reviewState, table.generatedAt),
+    index("idx_transcripts_parent").on(table.parentTranscriptId),
+    check("transcripts_revision_check", sql`${table.revisionNumber} >= 1`),
+    check("transcripts_word_count_check", sql`${table.wordCount} >= 0`),
+    check("transcripts_segment_count_check", sql`${table.segmentCount} >= 0`),
+    check(
+      "transcripts_source_kind_check",
+      sql`${table.sourceKind} IN ('publisher-transcript', 'youtube-caption', 'media-transcription', 'manual-upload')`,
+    ),
+    check(
+      "transcripts_rights_check",
+      sql`${table.rightsState} IN ('unknown', 'link-only', 'candidate-permission', 'publisher-permission', 'redistributable')`,
+    ),
+    check(
+      "transcripts_quality_check",
+      sql`${table.qualityState} IN ('unassessed', 'publisher-provided', 'youtube-manual-caption', 'youtube-auto-caption', 'platform-asr', 'human-corrected', 'verified')`,
+    ),
+    check(
+      "transcripts_retention_check",
+      sql`${table.retentionOutcome} IN ('stored-private', 'stored-publishable', 'removed')`,
+    ),
+    check(
+      "transcripts_review_check",
+      sql`${table.reviewState} IN ('unreviewed', 'approved', 'rejected', 'needs-update')`,
+    ),
+    check(
+      "transcripts_publication_check",
+      sql`${table.publicationState} IN ('private', 'published', 'withheld')`,
+    ),
+    check(
+      "transcripts_youtube_caption_private_check",
+      sql`${table.sourceKind} != 'youtube-caption' OR (
+        ${table.retentionOutcome} != 'stored-publishable'
+        AND ${table.publicationState} != 'published'
+      )`,
+    ),
+    check(
+      "transcripts_publish_requires_rights_check",
+      sql`${table.publicationState} != 'published' OR (
+        ${table.reviewState} = 'approved'
+        AND ${table.retentionOutcome} = 'stored-publishable'
+        AND ${table.rightsState} IN ('candidate-permission', 'publisher-permission', 'redistributable')
+      )`,
+    ),
+  ],
+);
+
+export const transcriptSegments = sqliteTable(
+  "transcript_segments",
+  {
+    id: text("id").primaryKey(),
+    transcriptId: text("transcript_id")
+      .notNull()
+      .references(() => transcripts.id, { onDelete: "cascade" }),
+    segmentIndex: integer("segment_index").notNull(),
+    startMilliseconds: integer("start_milliseconds"),
+    endMilliseconds: integer("end_milliseconds"),
+    speakerLabel: text("speaker_label"),
+    text: text("text").notNull(),
+    startOffset: integer("start_offset"),
+    endOffset: integer("end_offset"),
+    contentHash: text("content_hash").notNull(),
+    confidence: real("confidence"),
+    reviewState: text("review_state").notNull().default("unreviewed"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_transcript_segments_transcript_index").on(
+      table.transcriptId,
+      table.segmentIndex,
+    ),
+    index("idx_transcript_segments_time").on(table.transcriptId, table.startMilliseconds),
+    check("transcript_segments_index_check", sql`${table.segmentIndex} >= 0`),
+    check(
+      "transcript_segments_time_check",
+      sql`(${table.startMilliseconds} IS NULL AND ${table.endMilliseconds} IS NULL) OR (${table.startMilliseconds} IS NOT NULL AND ${table.endMilliseconds} IS NOT NULL AND ${table.startMilliseconds} >= 0 AND ${table.endMilliseconds} >= ${table.startMilliseconds})`,
+    ),
+    check(
+      "transcript_segments_offset_check",
+      sql`(${table.startOffset} IS NULL AND ${table.endOffset} IS NULL) OR (${table.startOffset} IS NOT NULL AND ${table.endOffset} IS NOT NULL AND ${table.startOffset} >= 0 AND ${table.endOffset} >= ${table.startOffset})`,
+    ),
+    check(
+      "transcript_segments_confidence_check",
+      sql`${table.confidence} IS NULL OR (${table.confidence} >= 0 AND ${table.confidence} <= 1)`,
+    ),
+    check(
+      "transcript_segments_review_check",
+      sql`${table.reviewState} IN ('unreviewed', 'approved', 'rejected', 'needs-update')`,
     ),
   ],
 );
@@ -625,6 +866,8 @@ export const evidence = sqliteTable(
     snapshotId: text("snapshot_id")
       .notNull()
       .references(() => sourceSnapshots.id),
+    transcriptId: text("transcript_id").references(() => transcripts.id),
+    transcriptSegmentId: text("transcript_segment_id").references(() => transcriptSegments.id),
     relationship: text("relationship").notNull().default("supports"),
     excerpt: text("excerpt").notNull(),
     locator: text("locator").notNull(),
@@ -638,6 +881,11 @@ export const evidence = sqliteTable(
   (table) => [
     index("idx_evidence_claim").on(table.claimId),
     index("idx_evidence_snapshot").on(table.snapshotId),
+    index("idx_evidence_transcript").on(table.transcriptId, table.transcriptSegmentId),
+    check(
+      "evidence_segment_requires_transcript_check",
+      sql`${table.transcriptSegmentId} IS NULL OR ${table.transcriptId} IS NOT NULL`,
+    ),
   ],
 );
 

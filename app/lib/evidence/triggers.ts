@@ -56,6 +56,45 @@ const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS reviews_no_delete
    BEFORE DELETE ON reviews
    BEGIN SELECT RAISE(ABORT, 'review decisions are immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS transcripts_content_no_update
+   BEFORE UPDATE OF job_id, revision_number, parent_transcript_id, candidacy_id,
+     source_snapshot_id, title, language, source_kind, producer, producer_version,
+     config_hash, content_hash, storage_key, word_count, duration_seconds,
+     segment_count, generated_at, created_at
+   ON transcripts
+   BEGIN SELECT RAISE(ABORT, 'transcript content is immutable; create a revision'); END`,
+  `CREATE TRIGGER IF NOT EXISTS transcripts_candidate_guard
+   BEFORE INSERT ON transcripts
+   WHEN NEW.candidacy_id IS NOT (
+     SELECT candidacy_id FROM transcript_jobs WHERE id = NEW.job_id
+   )
+   BEGIN SELECT RAISE(ABORT, 'transcript candidacy does not match its job'); END`,
+  `CREATE TRIGGER IF NOT EXISTS transcripts_no_delete
+   BEFORE DELETE ON transcripts
+   BEGIN SELECT RAISE(ABORT, 'transcript versions are immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS transcript_segments_content_no_update
+   BEFORE UPDATE OF transcript_id, segment_index, start_milliseconds,
+     end_milliseconds, speaker_label, text, start_offset, end_offset,
+     content_hash, confidence, created_at
+   ON transcript_segments
+   BEGIN SELECT RAISE(ABORT, 'transcript segment content is immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS transcript_segments_no_delete
+   BEFORE DELETE ON transcript_segments
+   BEGIN SELECT RAISE(ABORT, 'transcript segments are immutable'); END`,
+  `CREATE TRIGGER IF NOT EXISTS evidence_transcript_segment_guard
+   BEFORE INSERT ON evidence
+   WHEN NEW.transcript_segment_id IS NOT NULL
+     AND NEW.transcript_id IS NOT (
+       SELECT transcript_id FROM transcript_segments WHERE id = NEW.transcript_segment_id
+     )
+   BEGIN SELECT RAISE(ABORT, 'evidence segment does not belong to transcript'); END`,
+  `CREATE TRIGGER IF NOT EXISTS evidence_transcript_segment_update_guard
+   BEFORE UPDATE OF transcript_id, transcript_segment_id ON evidence
+   WHEN NEW.transcript_segment_id IS NOT NULL
+     AND NEW.transcript_id IS NOT (
+       SELECT transcript_id FROM transcript_segments WHERE id = NEW.transcript_segment_id
+     )
+   BEGIN SELECT RAISE(ABORT, 'evidence segment does not belong to transcript'); END`,
 ] as const;
 
 let triggerInitialization: Promise<void> | null = null;

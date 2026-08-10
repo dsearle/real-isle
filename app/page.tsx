@@ -8,8 +8,12 @@ import {
   constituencyBoundarySource,
   updates,
 } from "./lib/data";
+import { getPublishableCandidatePortraitsSafe } from "./lib/evidence/public-media";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const publishablePortraits = await getPublishableCandidatePortraitsSafe();
   const homeCandidates = candidates.flatMap((candidate) => {
     const constituency = constituencies.find((item) => item.name === candidate.constituency);
     if (!constituency) return [];
@@ -18,6 +22,7 @@ export default function Home() {
       evidenceCount: candidate.evidenceCount,
       initials: candidate.initials,
       name: candidate.name,
+      portraitUrl: publishablePortraits[candidate.slug] ?? null,
       priorities: candidate.priorities,
       slug: candidate.slug,
       status: candidate.status,

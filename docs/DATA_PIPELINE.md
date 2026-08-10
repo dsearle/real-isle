@@ -69,11 +69,66 @@ Facebook and other social URLs may be discovered from candidate profile pages.
 The collector does not crawl those platforms; their content requires a separate
 authorised integration and editorial review.
 
+## Interview and transcript pipeline
+
+Candidate profile parsing creates durable transcript jobs when it discovers a
+publisher transcript document, a specific YouTube interview, or a podcast/audio
+interview. Discovery is not treated as permission to copy or publish the
+material. Each job keeps independent access, rights, retention and processing
+states so that, for example, a publicly linked transcript can be retrievable but
+still lack a republication licence.
+
+The transcript structure is deliberately layered:
+
+1. `transcript_jobs` records the candidate, exact source observation and
+   snapshot, provider URL/ID, access decision, rights state, attempts, leases,
+   errors and processor state.
+2. `transcripts` records an immutable derived artefact in R2, its source
+   snapshot, content/configuration hashes, producer/model version, quality,
+   rights, review state and publication state. An editor correction or model
+   rerun creates a new transcript rather than rewriting the earlier wording.
+3. `transcript_segments` records ordered, time-aligned text, speaker labels,
+   offsets, confidence and per-segment hashes. A proposed claim can therefore
+   cite the exact seconds and wording that support it.
+4. `claims` and `evidence` remain private proposals until an editor checks the
+   transcript segment against the original media and records a review event.
+
+The preferred acquisition order is publisher-provided transcript, candidate or
+publisher upload, owner-authorised captions, then ASR of media for which explicit
+processing permission or a reusable licence has been recorded. Publisher DOCX,
+PDF, VTT or SRT files are fetched only by a dedicated bounded connector with
+strict MIME/magic, size, redirect and archive-expansion checks. Original bytes
+and normalised output receive separate content hashes and private R2 keys.
+
+YouTube does not expose arbitrary public transcript text through the supported
+Data API. [`captions.list`](https://developers.google.com/youtube/v3/docs/captions/list)
+returns track metadata rather than text, while
+[`captions.download`](https://developers.google.com/youtube/v3/docs/captions/download)
+requires OAuth from an authenticated account with permission to edit the
+relevant video. Caption data acquired through OAuth is private, expiring
+editorial input; it is not itself a publicly reusable transcript. A public
+transcript must instead be supplied separately by the publisher or rights
+holder under an explicit reuse basis. The
+[YouTube Developer Policies](https://developers.google.com/youtube/terms/developer-policies)
+also prohibit undocumented scraping and separating or downloading audiovisual
+components outside the permitted API flow.
+The People's Isle therefore does not use player scraping, undocumented timed
+text endpoints, `yt-dlp`, or YouTube audio extraction. Until a channel owner
+authorises private caption access or supplies a transcript, a discovered YouTube item is
+shown in the private workspace as `permission-required`; the official player
+and source link remain the public reference.
+
+Full transcript publication is also separate from acquisition. It requires an
+approved review, a stored-publishable artefact, and candidate/publisher
+permission or a redistributable licence. Without that basis the public site may
+show only reviewed factual summaries, limited evidence excerpts where lawful,
+timestamps, hashes and the original source link.
+
 ## Storage and integrity
 
 - **D1 (`DB`)** holds structured civic entities, source metadata, observations,
-  immutable versions, claims, evidence links, reviews, disputes and the audit
-  chain head.
+  immutable versions, transcript jobs and segment metadata, claims, evidence
+  links, reviews, disputes and the audit chain head.
 - **R2 (`SNAPSHOTS`)** holds private, content-addressed source captures. Access
   and retention are rights-gated; a stored capture is not permission to publish
   the publisher's text, audio or video.
@@ -96,8 +151,10 @@ idempotency keys, ETags/Last-Modified headers and failure backoff make repeated
 or overlapping calls safe. The public health summary is available at
 `/api/evidence/status`, while the detailed review inbox is at `/admin/review`.
 That founder route requires ChatGPT sign-in and a server-side match against the
-Site-specific IDs in `ADMIN_USER_IDS`; an authenticated user who is not on the
-allowlist sees only their own setup identifier and no unpublished evidence.
+Site-specific IDs in `ADMIN_USER_IDS` or founder emails in `ADMIN_EMAILS`; an
+authenticated user who is not on either allowlist sees only their own setup
+identifier and no unpublished evidence. IDs are preferred as collaborators are
+added; the initial owner email is a bootstrap identity for the private Site.
 
 For regular checks even when the private site has no visitors,
 `.github/workflows/evidence-ingestion.yml` runs every ten minutes. It is

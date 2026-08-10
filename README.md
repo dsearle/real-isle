@@ -19,6 +19,9 @@ The first reviewable product slice includes:
 - a reviewed election-news desk;
 - a browser-only vote-compass methodology preview; and
 - a founder evidence-review workspace;
+- a private research-operations dashboard showing candidate coverage, source
+  health, ingestion runs, portrait-rights gaps, retrieved evidence and the
+  transcript pipeline as records arrive;
 - a maintained evidence ledger that monitors approved news, audio, video and
   parliamentary feeds while keeping newly discovered material private until
   editorial review; and
