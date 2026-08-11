@@ -62,5 +62,11 @@ jobs:
               | sort
               | group_by(.)
               | map({ outcome: .[0], count: length })
+            ),
+            documentAnalysis: (
+              [.documents?.results[]?.analysis]
+              | sort
+              | group_by(.)
+              | map({ state: .[0], count: length })
             )
           }' <<<"${response}"
