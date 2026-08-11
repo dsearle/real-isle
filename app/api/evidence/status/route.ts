@@ -1,30 +1,23 @@
-import { getEvidenceDashboardSafe } from "../../../lib/evidence/status";
+import { getPublicMonitorSnapshot } from "../../../lib/evidence/public-monitor";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const dashboard = await getEvidenceDashboardSafe();
-  if (!dashboard) {
+  try {
+    const snapshot = await getPublicMonitorSnapshot();
     return Response.json(
-      { state: "initialising" },
+      {
+        counts: snapshot.counts,
+        generatedAt: snapshot.generatedAt,
+        sources: snapshot.sources,
+        state: snapshot.state,
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
+  } catch {
+    return Response.json(
+      { state: "unavailable" },
       { status: 503, headers: { "cache-control": "no-store" } },
     );
   }
-  return Response.json(
-    {
-      audit: {
-        headHash: dashboard.auditHeadHash,
-        sequence: dashboard.auditSequence,
-      },
-      counts: dashboard.counts,
-      sources: dashboard.sources.map((source) => ({
-        id: source.id,
-        lastSuccessAt: source.last_success_at,
-        name: source.name,
-        sourceTier: source.source_tier,
-      })),
-      state: "active",
-    },
-    { headers: { "cache-control": "no-store" } },
-  );
 }

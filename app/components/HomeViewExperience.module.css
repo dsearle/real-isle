@@ -1104,11 +1104,6 @@
   z-index: 24;
 }
 
-.atlasMarkerPending {
-  opacity: 0;
-  pointer-events: none;
-}
-
 .atlasHotspot {
   align-items: center;
   background: #fffdf7;

@@ -13,6 +13,7 @@ const MAXIMUM_BODY_LENGTH = 4_096;
 const CONTENT_HASH = /^[0-9a-f]{64}$/;
 const ITEM_ID = /^item_[0-9a-f]{32}$/;
 const VERSION_ID = /^itemversion_[0-9a-f]{32}$/;
+const REVIEW_ID = /^review_[0-9a-f]{32}$/;
 const CANDIDACY_ID = /^[a-z0-9][a-z0-9:-]{0,99}$/;
 const RULESET_ID = /^[a-z0-9][a-z0-9._:-]{0,99}$/;
 
@@ -72,12 +73,16 @@ export async function POST(request: Request) {
   const itemId = body.itemId;
   const expectedVersionId = body.expectedVersionId;
   const expectedContentHash = body.expectedContentHash;
+  const expectedPreviousReviewId = body.expectedPreviousReviewId ?? null;
   const expectedCollectionReasonHash = body.expectedCollectionReasonHash;
   const expectedCollectionRuleset = body.expectedCollectionRuleset;
   const rationale = body.rationale;
   const candidateIds = body.candidateIds;
   const candidateSuggestionFingerprint = body.candidateSuggestionFingerprint;
+  const constituencyIds = body.constituencyIds;
   const reviewKind = body.reviewKind;
+  const scopeSuggestionFingerprint = body.scopeSuggestionFingerprint;
+  const topicIds = body.topicIds;
   if (decision !== "approved" && decision !== "rejected") {
     return json({ error: "Choose approve or reject." }, 400);
   }
@@ -89,6 +94,12 @@ export async function POST(request: Request) {
   }
   if (typeof expectedContentHash !== "string" || !CONTENT_HASH.test(expectedContentHash)) {
     return json({ error: "The source content hash is invalid." }, 400);
+  }
+  if (
+    expectedPreviousReviewId !== null
+    && (typeof expectedPreviousReviewId !== "string" || !REVIEW_ID.test(expectedPreviousReviewId))
+  ) {
+    return json({ error: "The current editorial decision is missing or invalid." }, 400);
   }
   if (
     typeof expectedCollectionReasonHash !== "string"
@@ -122,8 +133,45 @@ export async function POST(request: Request) {
     return json({ error: "The candidate dossier selection is invalid." }, 400);
   }
   const normalizedCandidateIds = [...new Set(candidateIds)].sort();
-  if (decision === "rejected" && normalizedCandidateIds.length > 0) {
-    return json({ error: "Rejected evidence cannot be assigned to a candidate dossier." }, 400);
+  if (
+    typeof scopeSuggestionFingerprint !== "string"
+    || !CONTENT_HASH.test(scopeSuggestionFingerprint)
+  ) {
+    return json({ error: "The topic and constituency suggestion set is stale or invalid." }, 400);
+  }
+  if (
+    !Array.isArray(topicIds)
+    || topicIds.length > 50
+    || topicIds.some((topicId) => typeof topicId !== "string" || !CANDIDACY_ID.test(topicId))
+  ) {
+    return json({ error: "The topic selection is invalid." }, 400);
+  }
+  if (
+    !Array.isArray(constituencyIds)
+    || constituencyIds.length > 20
+    || constituencyIds.some((constituencyId) => (
+      typeof constituencyId !== "string" || !CANDIDACY_ID.test(constituencyId)
+    ))
+  ) {
+    return json({ error: "The constituency selection is invalid." }, 400);
+  }
+  const normalizedTopicIds = [...new Set(topicIds)].sort();
+  const normalizedConstituencyIds = [...new Set(constituencyIds)].sort();
+  if (
+    decision === "rejected"
+    && (
+      normalizedCandidateIds.length > 0
+      || normalizedTopicIds.length > 0
+      || normalizedConstituencyIds.length > 0
+    )
+  ) {
+    return json({ error: "Rejected evidence cannot be routed to a public evidence section." }, 400);
+  }
+  if (
+    reviewKind === "candidate-assignment"
+    && (normalizedTopicIds.length > 0 || normalizedConstituencyIds.length > 0)
+  ) {
+    return json({ error: "Candidate filing decisions cannot change source routing." }, 400);
   }
 
   try {
@@ -131,14 +179,18 @@ export async function POST(request: Request) {
       decision,
       candidateIds: normalizedCandidateIds,
       candidateSuggestionFingerprint,
+      constituencyIds: normalizedConstituencyIds,
       expectedCollectionReasonHash,
       expectedCollectionRuleset,
       expectedContentHash,
+      expectedPreviousReviewId,
       expectedVersionId,
       itemId,
       rationale,
       reviewKind,
       reviewerId: access.user.userId,
+      scopeSuggestionFingerprint,
+      topicIds: normalizedTopicIds,
     });
     return json({ receipt });
   } catch (error) {

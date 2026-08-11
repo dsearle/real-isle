@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -175,4 +176,13 @@ test("monitor queries read only active source metadata and aggregate ingestion r
     queryText,
     /source_items|source_snapshots|reviews|reviewer_id|audit_events|audit_head_hash|canonical_url|error_summary|last_error/,
   );
+});
+
+test("the legacy public status route cannot invoke the private dashboard or its backfills", () => {
+  const route = readFileSync(
+    new URL("../app/api/evidence/status/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /getPublicMonitorSnapshot/);
+  assert.doesNotMatch(route, /getEvidenceDashboard|evidence\/status|backfill|UPDATE/i);
 });

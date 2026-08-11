@@ -4,11 +4,12 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import { appendAuditEventWithStatements } from "../app/lib/evidence/audit.ts";
+import { fingerprintCandidateSuggestions } from "../app/lib/evidence/candidate-association.ts";
+import { fingerprintScopeSuggestions } from "../app/lib/evidence/scope-association.ts";
 import {
   appendLegacyCollectionAssessment,
   collectionAssessmentNoDeleteSql,
   collectionAssessmentNoUpdateSql,
-  insertCollectionAssessmentStatement,
   legacyCollectionAssessmentBacklogSql,
   prepareCollectionAssessment,
   readVerifiedCollectionReason,
@@ -25,6 +26,7 @@ import {
   SourceItemReviewConflictError,
 } from "../app/lib/evidence/review.ts";
 import { ensureEvidenceTriggers } from "../app/lib/evidence/triggers.ts";
+import { getEvidenceDashboardForDatabase } from "../app/lib/evidence/status.ts";
 
 function applyMigrations(database) {
   const migrationFiles = readdirSync(new URL("../drizzle/", import.meta.url))
@@ -160,6 +162,7 @@ test("the forward migration creates one immutable assessment per source version"
         ORDER BY name`,
     ).all();
     assert.deepEqual(triggers.map((trigger) => trigger.name), [
+      "collection_assessment_current_version_guard",
       "collection_assessments_no_delete",
       "collection_assessments_no_update",
     ]);
@@ -209,7 +212,7 @@ test("an audited batch inserts the version, audit row, then its FK-linked assess
     });
     const assessment = await prepareCollectionAssessment("itemversion_test", reason);
 
-    const audit = await appendAuditEventWithStatements(
+    await appendAuditEventWithStatements(
       db,
       {
         action: "source-item.discovered",
@@ -244,8 +247,13 @@ test("an audited batch inserts the version, audit row, then its FK-linked assess
             WHERE id = ?`,
         ).bind("itemversion_test", "b".repeat(64), "item_test"),
       ],
-      (event) => [insertCollectionAssessmentStatement(db, assessment, event)],
     );
+    assert.equal(await appendLegacyCollectionAssessment({
+      actor: { id: "test-monitor", type: "system" },
+      assessment,
+      db,
+      sourceItemId: "item_test",
+    }), true);
 
     const stored = database.prepare(
       `SELECT assessments.*, audit.action
@@ -253,8 +261,7 @@ test("an audited batch inserts the version, audit row, then its FK-linked assess
          JOIN audit_events audit ON audit.id = assessments.created_by_audit_event_id
         WHERE assessments.source_item_version_id = ?`,
     ).get("itemversion_test");
-    assert.equal(stored.created_by_audit_event_id, audit.id);
-    assert.equal(stored.action, "source-item.discovered");
+    assert.equal(stored.action, "source-item.relevance-assessed");
     assert.equal(stored.canonical_reason_hash, assessment.canonicalReasonHash);
     assert.equal(stored.canonical_reason_json.includes("Candidate A"), true);
     assert.equal(stored.canonical_reason_json.includes("mooir vannin"), true);
@@ -270,15 +277,19 @@ test("an audited batch inserts the version, audit row, then its FK-linked assess
     const reviewInput = {
       candidateIds: [],
       candidateSuggestionFingerprint: "e".repeat(64),
+      constituencyIds: [],
       decision: "rejected",
       expectedCollectionReasonHash: assessment.canonicalReasonHash,
       expectedCollectionRuleset: assessment.rulesetId,
       expectedContentHash: "b".repeat(64),
+      expectedPreviousReviewId: null,
       expectedVersionId: "itemversion_test",
       itemId: "item_test",
       rationale: "This captured item is not relevant to the election evidence set.",
       reviewKind: "source-version",
       reviewerId: "reviewer-a",
+      scopeSuggestionFingerprint: await fingerprintScopeSuggestions([]),
+      topicIds: [],
     };
     await assert.rejects(
       reviewSourceItemVersion(db, {
@@ -305,6 +316,131 @@ test("an audited batch inserts the version, audit row, then its FK-linked assess
     const replayReceipt = await reviewSourceItemVersion(db, reviewInput);
     assert.equal(replayReceipt.idempotent, true);
     assert.equal(replayReceipt.collectionReasonHash, assessment.canonicalReasonHash);
+    database.prepare(
+      "INSERT INTO policy_topics (id, name) VALUES (?, ?), (?, ?), (?, ?)",
+    ).run(
+      "wind", "Offshore wind",
+      "health", "Health and social care",
+      "housing", "Housing and affordability",
+    );
+    database.prepare(
+      "INSERT INTO constituencies (id, name, seats) VALUES (?, ?, ?), (?, ?, ?)",
+    ).run("douglas-north", "Douglas North", 2, "ramsey", "Ramsey", 2);
+    database.prepare(
+      `INSERT INTO item_entities (
+         item_id, entity_type, entity_id, mention_text, match_method, confidence
+       ) VALUES
+         (?, 'topic', ?, ?, ?, ?),
+         (?, 'topic', ?, ?, ?, ?),
+         (?, 'constituency', ?, ?, ?, ?)`,
+    ).run(
+      "item_test", "wind", "mooir vannin", "deterministic-keyword-v1", 0.7,
+      "item_test", "health", "Manx Care", "deterministic-keyword-v1", 0.62,
+      "item_test", "douglas-north", "Douglas North", "deterministic-keyword-v1", 0.8,
+    );
+    const scopeSuggestions = [{
+      confidence: 0.8,
+      entityType: "constituency",
+      id: "douglas-north",
+      matchMethod: "deterministic-keyword-v1",
+      mentionText: "Douglas North",
+    }, {
+      confidence: 0.62,
+      entityType: "topic",
+      id: "health",
+      matchMethod: "deterministic-keyword-v1",
+      mentionText: "Manx Care",
+    }, {
+      confidence: 0.7,
+      entityType: "topic",
+      id: "wind",
+      matchMethod: "deterministic-keyword-v1",
+      mentionText: "mooir vannin",
+    }];
+    const scopeSuggestionFingerprint = await fingerprintScopeSuggestions(scopeSuggestions);
+    await assert.rejects(
+      reviewSourceItemVersion(db, {
+        ...reviewInput,
+        candidateSuggestionFingerprint: await fingerprintCandidateSuggestions([]),
+        decision: "approved",
+        expectedPreviousReviewId: reviewReceipt.reviewId,
+        rationale: "Re-approved after checking the source scope and frozen topic match.",
+        scopeSuggestionFingerprint: await fingerprintScopeSuggestions(scopeSuggestions.slice(0, 2)),
+        constituencyIds: ["ramsey"],
+        topicIds: ["housing", "wind"],
+      }),
+      /topic or constituency suggestions changed/,
+    );
+    await assert.rejects(
+      reviewSourceItemVersion(db, {
+        ...reviewInput,
+        candidateSuggestionFingerprint: await fingerprintCandidateSuggestions([]),
+        decision: "approved",
+        expectedPreviousReviewId: reviewReceipt.reviewId,
+        rationale: "This attempt includes a topic that is not in the active canonical registry.",
+        scopeSuggestionFingerprint,
+        topicIds: ["missing-topic", "wind"],
+      }),
+      /reviewer-added topics are no longer active/,
+    );
+    const approvalReceipt = await reviewSourceItemVersion(db, {
+      ...reviewInput,
+      candidateSuggestionFingerprint: await fingerprintCandidateSuggestions([]),
+      decision: "approved",
+      expectedPreviousReviewId: reviewReceipt.reviewId,
+      rationale: "Re-approved after checking the source scope and frozen topic match.",
+      scopeSuggestionFingerprint,
+      constituencyIds: ["ramsey"],
+      topicIds: ["housing", "wind"],
+    });
+    assert.equal(approvalReceipt.decision, "approved");
+    assert.equal(approvalReceipt.publicationState, "published");
+    assert.equal(approvalReceipt.supersedesReviewId, reviewReceipt.reviewId);
+    assert.deepEqual(
+      { ...database.prepare(
+        `SELECT review_state, publication_state
+           FROM source_items WHERE id = 'item_test'`,
+      ).get() },
+      { publication_state: "published", review_state: "approved" },
+    );
+    assert.deepEqual(
+      database.prepare(
+        `SELECT entity_type, entity_id, confirmation_state, review_id
+           FROM source_item_version_entities
+          WHERE source_item_version_id = 'itemversion_test'
+          ORDER BY entity_type, entity_id`,
+      ).all().map((row) => ({ ...row })),
+      [
+        { confirmation_state: "rejected", entity_id: "douglas-north", entity_type: "constituency", review_id: approvalReceipt.reviewId },
+        { confirmation_state: "confirmed", entity_id: "ramsey", entity_type: "constituency", review_id: approvalReceipt.reviewId },
+        { confirmation_state: "rejected", entity_id: "health", entity_type: "topic", review_id: approvalReceipt.reviewId },
+        { confirmation_state: "confirmed", entity_id: "housing", entity_type: "topic", review_id: approvalReceipt.reviewId },
+        { confirmation_state: "confirmed", entity_id: "wind", entity_type: "topic", review_id: approvalReceipt.reviewId },
+      ],
+    );
+    assert.deepEqual(
+      database.prepare(
+        `SELECT entity_type, entity_id, mention_text, match_method, confidence
+           FROM source_item_version_entities
+          WHERE review_id = ? AND match_method = 'reviewer-added-v1'
+          ORDER BY entity_type, entity_id`,
+      ).all(approvalReceipt.reviewId).map((row) => ({ ...row })),
+      [
+        { confidence: 1, entity_id: "ramsey", entity_type: "constituency", match_method: "reviewer-added-v1", mention_text: "Ramsey" },
+        { confidence: 1, entity_id: "housing", entity_type: "topic", match_method: "reviewer-added-v1", mention_text: "Housing and affordability" },
+      ],
+    );
+    const approvalReplay = await reviewSourceItemVersion(db, {
+      ...reviewInput,
+      candidateSuggestionFingerprint: await fingerprintCandidateSuggestions([]),
+      decision: "approved",
+      expectedPreviousReviewId: reviewReceipt.reviewId,
+      rationale: "Re-approved after checking the source scope and frozen topic match.",
+      scopeSuggestionFingerprint,
+      constituencyIds: ["ramsey"],
+      topicIds: ["housing", "wind"],
+    });
+    assert.equal(approvalReplay.idempotent, true);
     const auditCountBeforeReplay = database.prepare(
       "SELECT COUNT(*) AS count FROM audit_events",
     ).get().count;
@@ -354,10 +490,10 @@ test("an audited batch inserts the version, audit row, then its FK-linked assess
         assessment.route,
         assessment.canonicalReasonJson,
         assessment.canonicalReasonHash,
-        audit.id,
+        stored.created_by_audit_event_id,
         "2026-08-11T12:01:00.000Z",
       ),
-      /UNIQUE constraint failed/,
+      /collection assessment target is stale|UNIQUE constraint failed/,
     );
 
     database.prepare(
@@ -458,6 +594,220 @@ test("an audited batch inserts the version, audit row, then its FK-linked assess
 
     database.exec(collectionAssessmentNoUpdateSql.replace("IF NOT EXISTS ", "IF NOT EXISTS "));
     database.exec(collectionAssessmentNoDeleteSql.replace("IF NOT EXISTS ", "IF NOT EXISTS "));
+  } finally {
+    database.close();
+  }
+});
+
+test("candidate filing decisions remain reachable and CAS-safe through approve, reject and restore", async () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    applyMigrations(database);
+    seedVersionParents(database);
+    const db = d1Adapter(database);
+    await ensureEvidenceTriggers(db);
+    const reason = projectCollectionReason({
+      candidates: [],
+      constituencies: [],
+      itemType: "news",
+      sourceFeedType: "rss",
+      sourceId: "test-source",
+      sourceName: "Test source",
+      summary: "A source that predates candidate association filing.",
+      title: "Election source",
+      topics: [],
+    });
+    const assessment = await prepareCollectionAssessment("itemversion_assignment", reason);
+    await appendAuditEventWithStatements(
+      db,
+      {
+        action: "source-item.discovered",
+        actorId: "test-monitor",
+        actorType: "system",
+        entityId: "item_test",
+        entityType: "source-item",
+        payload: { collectionReasonHash: assessment.canonicalReasonHash },
+      },
+      () => [
+        db.prepare(
+          `INSERT INTO source_item_versions (
+             id, source_item_id, ingestion_run_id, observed_at, payload,
+             payload_hash, parser_version
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+          "itemversion_assignment",
+          "item_test",
+          "run-1",
+          "2026-08-11T13:00:00.000Z",
+          "{}",
+          "c".repeat(64),
+          "feed-v1",
+        ),
+        db.prepare(
+          "UPDATE source_items SET latest_version_id = ?, content_hash = ? WHERE id = ?",
+        ).bind("itemversion_assignment", "c".repeat(64), "item_test"),
+      ],
+    );
+    await appendLegacyCollectionAssessment({
+      actor: { id: "test-monitor", type: "system" },
+      assessment,
+      db,
+      sourceItemId: "item_test",
+    });
+    const emptyCandidateFingerprint = await fingerprintCandidateSuggestions([]);
+    const emptyScopeFingerprint = await fingerprintScopeSuggestions([]);
+    const sourceApproved = await reviewSourceItemVersion(db, {
+      candidateIds: [],
+      candidateSuggestionFingerprint: emptyCandidateFingerprint,
+      constituencyIds: [],
+      decision: "approved",
+      expectedCollectionReasonHash: assessment.canonicalReasonHash,
+      expectedCollectionRuleset: assessment.rulesetId,
+      expectedContentHash: "c".repeat(64),
+      expectedPreviousReviewId: null,
+      expectedVersionId: "itemversion_assignment",
+      itemId: "item_test",
+      rationale: "Approved before the later candidate association was detected.",
+      reviewKind: "source-version",
+      reviewerId: "reviewer-a",
+      scopeSuggestionFingerprint: emptyScopeFingerprint,
+      topicIds: [],
+    });
+
+    database.prepare(
+      "INSERT INTO people (id, full_name, sort_name) VALUES (?, ?, ?)",
+    ).run("person-a", "Candidate A", "Candidate A");
+    database.prepare(
+      "INSERT INTO elections (id, name, jurisdiction) VALUES (?, ?, ?)",
+    ).run("election-a", "General Election 2026", "Isle of Man");
+    database.prepare(
+      "INSERT INTO constituencies (id, name, seats) VALUES (?, ?, ?)",
+    ).run("constituency-a", "Douglas North", 2);
+    database.prepare(
+      `INSERT INTO candidacies (
+         id, election_id, person_id, constituency_id, declaration_status
+       ) VALUES (?, ?, ?, ?, ?)`,
+    ).run("candidate-a", "election-a", "person-a", "constituency-a", "declared");
+    database.prepare(
+      `INSERT INTO item_entities (
+         item_id, entity_type, entity_id, mention_text, match_method, confidence
+       ) VALUES (?, 'candidacy', ?, ?, ?, ?)`,
+    ).run("item_test", "candidate-a", "Candidate A", "deterministic-name-v1", 0.92);
+    const candidateFingerprint = await fingerprintCandidateSuggestions([{
+      candidacyId: "candidate-a",
+      confidence: 0.92,
+      matchMethod: "deterministic-name-v1",
+      mentionText: "Candidate A",
+    }]);
+    const baseAssignment = {
+      candidateSuggestionFingerprint: candidateFingerprint,
+      constituencyIds: [],
+      expectedCollectionReasonHash: assessment.canonicalReasonHash,
+      expectedCollectionRuleset: assessment.rulesetId,
+      expectedContentHash: "c".repeat(64),
+      expectedVersionId: "itemversion_assignment",
+      itemId: "item_test",
+      reviewKind: "candidate-assignment",
+      reviewerId: "reviewer-a",
+      scopeSuggestionFingerprint: emptyScopeFingerprint,
+      topicIds: [],
+    };
+    const approved = await reviewSourceItemVersion(db, {
+      ...baseAssignment,
+      candidateIds: ["candidate-a"],
+      decision: "approved",
+      expectedPreviousReviewId: null,
+      rationale: "Confirmed the candidate filing against the captured source.",
+    });
+    const rejected = await reviewSourceItemVersion(db, {
+      ...baseAssignment,
+      candidateIds: [],
+      decision: "rejected",
+      expectedPreviousReviewId: approved.reviewId,
+      rationale: "Dismissed after finding that the name appeared only in an unrelated quotation.",
+    });
+    await assert.rejects(
+      reviewSourceItemVersion(db, {
+        ...baseAssignment,
+        candidateIds: [],
+        decision: "rejected",
+        expectedPreviousReviewId: approved.reviewId,
+        rationale: "A stale competing dismissal must not branch the append-only decision chain.",
+      }),
+      SourceItemReviewConflictError,
+    );
+    const rejectedDashboard = await getEvidenceDashboardForDatabase(db);
+    const rejectedItem = rejectedDashboard.reviewItems.find((entry) => entry.id === "item_test");
+    assert.deepEqual(rejectedItem?.lastApprovedAssignmentCandidateIds, ["candidate-a"]);
+    const restored = await reviewSourceItemVersion(db, {
+      ...baseAssignment,
+      candidateIds: ["candidate-a"],
+      decision: "approved",
+      expectedPreviousReviewId: rejected.reviewId,
+      rationale: "Restored after a second check confirmed the candidate association.",
+    });
+    const dashboard = await getEvidenceDashboardForDatabase(db);
+    const item = dashboard.reviewItems.find((entry) => entry.id === "item_test");
+    assert.equal(item?.assignmentDecisionCount, 3);
+    assert.equal(item?.assignmentReviewAvailable, true);
+    assert.equal(item?.assignmentState, "approved");
+    assert.deepEqual(item?.lastApprovedAssignmentCandidateIds, ["candidate-a"]);
+    assert.deepEqual(item?.lastApprovedCandidateIds, ["candidate-a"]);
+    assert.equal(item?.currentAssignmentDecision?.id, restored.reviewId);
+    assert.equal(item?.currentAssignmentDecision?.supersedesReviewId, rejected.reviewId);
+    assert.deepEqual(
+      Object.fromEntries(database.prepare(
+        `SELECT review_id, confirmation_state
+           FROM source_item_version_entities
+          WHERE source_item_version_id = ? AND entity_type = 'candidacy'
+          ORDER BY review_id`,
+      ).all("itemversion_assignment").map((row) => [row.review_id, row.confirmation_state])),
+      {
+        [approved.reviewId]: "confirmed",
+        [rejected.reviewId]: "rejected",
+        [restored.reviewId]: "confirmed",
+      },
+    );
+
+    const sourceRejected = await reviewSourceItemVersion(db, {
+      candidateIds: [],
+      candidateSuggestionFingerprint: candidateFingerprint,
+      constituencyIds: [],
+      decision: "rejected",
+      expectedCollectionReasonHash: assessment.canonicalReasonHash,
+      expectedCollectionRuleset: assessment.rulesetId,
+      expectedContentHash: "c".repeat(64),
+      expectedPreviousReviewId: sourceApproved.reviewId,
+      expectedVersionId: "itemversion_assignment",
+      itemId: "item_test",
+      rationale: "Withheld the complete source while reconsidering its editorial relevance.",
+      reviewKind: "source-version",
+      reviewerId: "reviewer-a",
+      scopeSuggestionFingerprint: emptyScopeFingerprint,
+      topicIds: [],
+    });
+    await reviewSourceItemVersion(db, {
+      candidateIds: [],
+      candidateSuggestionFingerprint: candidateFingerprint,
+      constituencyIds: [],
+      decision: "approved",
+      expectedCollectionReasonHash: assessment.canonicalReasonHash,
+      expectedCollectionRuleset: assessment.rulesetId,
+      expectedContentHash: "c".repeat(64),
+      expectedPreviousReviewId: sourceRejected.reviewId,
+      expectedVersionId: "itemversion_assignment",
+      itemId: "item_test",
+      rationale: "Restored the source without the old legacy candidate filing.",
+      reviewKind: "source-version",
+      reviewerId: "reviewer-a",
+      scopeSuggestionFingerprint: emptyScopeFingerprint,
+      topicIds: [],
+    });
+    const refiledDashboard = await getEvidenceDashboardForDatabase(db);
+    const refiledItem = refiledDashboard.reviewItems.find((entry) => entry.id === "item_test");
+    assert.equal(refiledItem?.assignmentReviewAvailable, false);
+    assert.deepEqual(refiledItem?.lastApprovedCandidateIds, []);
   } finally {
     database.close();
   }

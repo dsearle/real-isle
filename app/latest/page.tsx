@@ -1,20 +1,24 @@
 import type { Metadata } from "next";
+import { ApprovedEvidenceFeed } from "../components/ApprovedEvidenceFeed";
 import { Footer } from "../components/Footer";
 import { Header } from "../components/Header";
-import { PrioritisedNewsFeed } from "../components/PrioritisedNewsFeed";
 import { PublicMonitorPanel } from "../components/PublicMonitorPanel";
-import { constituencies, updates } from "../lib/data";
+import { constituencies } from "../lib/data";
+import { getPublicEvidenceSnapshotSafe } from "../lib/evidence/public-evidence";
 import { getPublicMonitorSnapshotSafe } from "../lib/evidence/public-monitor";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Election desk",
-  description: "Reviewed election updates with direct links to the original sources.",
+  description: "Approved election evidence organised by candidate, constituency and topic, with direct links to each reviewed source page.",
 };
 
 export default async function LatestPage() {
-  const monitorSnapshot = await getPublicMonitorSnapshotSafe();
+  const [evidenceSnapshot, monitorSnapshot] = await Promise.all([
+    getPublicEvidenceSnapshotSafe(),
+    getPublicMonitorSnapshotSafe(),
+  ]);
   return (
     <main>
       <Header />
@@ -22,11 +26,29 @@ export default async function LatestPage() {
         <div className="shell">
           <p className="eyebrow">Monitored · reviewed · linked</p>
           <h1>The election desk</h1>
-          <p>The launch briefing is founder-curated and does not mirror the collection stream. New discoveries remain private until separately reviewed and published.</p>
+          <p>Follow the running public record of approved election sources. New discoveries remain private until an editor approves their relevance, associations and publication.</p>
         </div>
       </section>
       <section className="section shell desk-page-layout">
-        <PrioritisedNewsFeed constituencies={constituencies} updates={updates} />
+        <ApprovedEvidenceFeed
+          constituencies={constituencies}
+          snapshot={{
+            records: evidenceSnapshot.records.map((record) => ({
+              associations: record.associations,
+              auditFingerprint: record.auditFingerprint,
+              canonicalUrl: record.canonicalUrl,
+              coverageSummary: record.coverageSummary,
+              firstSeenAt: record.firstSeenAt,
+              itemType: record.itemType,
+              publishedAt: record.publishedAt,
+              reviewedAt: record.reviewedAt,
+              sourceName: record.sourceName,
+              title: record.title,
+              versionId: record.versionId,
+            })),
+            state: evidenceSnapshot.state,
+          }}
+        />
         <div className="desk-page-monitor">
           <PublicMonitorPanel initialSnapshot={monitorSnapshot} />
         </div>

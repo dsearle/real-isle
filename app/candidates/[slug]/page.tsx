@@ -7,6 +7,7 @@ import { Footer } from "../../components/Footer";
 import { Header } from "../../components/Header";
 import { ProfileMotion } from "../../components/ProfileMotion";
 import { candidates } from "../../lib/data";
+import { candidateRecordSentence } from "../../lib/evidence/candidate-declaration";
 import { getCandidatePageData } from "../../lib/evidence/candidate-intelligence";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ const loadCandidatePage = cache(async (slug: string) => {
     const access = await getAuthenticatedAdminAccess();
     includePrivate = Boolean(access?.allowed);
   } catch {
-    // Non-Workers renders use the public-only static fallback.
+    // Authentication failure stays on the fail-closed public projection.
   }
   return getCandidatePageData(slug, { includePrivate });
 });
@@ -30,7 +31,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!candidate) return { title: "Candidate not found" };
   return {
     title: candidate.name,
-    description: `Evidence profile for ${candidate.name}, a declared prospective candidate in ${candidate.constituency}.`,
+    description: `Evidence profile. ${candidateRecordSentence({
+      constituency: candidate.constituency,
+      name: candidate.name,
+      status: candidate.status,
+    })}`,
   };
 }
 
@@ -38,26 +43,37 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
   const { slug } = await params;
   const pageData = await loadCandidatePage(slug);
   if (!pageData) notFound();
-  const { candidate, dossierEvidence, founderPreview, overview, privateView, publishedOverview } = pageData;
-  const candidateIndex = Math.max(0, candidates.findIndex((entry) => entry.slug === candidate.slug));
-  const otherCandidates = candidates
+  const {
+    candidate,
+    dossierEvidence,
+    founderPreview,
+    identityProvenance,
+    overview,
+    privateView,
+    publishedOverview,
+  } = pageData;
+  const candidateIndex = [...candidate.slug].reduce((total, character) => total + character.charCodeAt(0), 0) % 6;
+  const otherCandidates = (privateView ? candidates : [])
     .filter((entry) => entry.slug !== candidate.slug)
     .sort((a, b) => Number(b.constituency === candidate.constituency) - Number(a.constituency === candidate.constituency))
     .slice(0, 3);
-  const liveEvidenceUrls = new Set(dossierEvidence.map((item) => item.canonicalUrl));
   const sourceLedger = [
     ...dossierEvidence.map((item) => ({
       audit: `Version ${item.versionId.slice(-8)} · Review ${item.reviewId.slice(-8)}`,
+      coverage: item.coverageSummary,
+      key: `live:${item.versionId}`,
       label: item.title,
       observed: new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(item.reviewedAt)),
       source: item.sourceName,
       state: item.publicationState === "published" ? "Published evidence" : "Private founder preview",
       url: item.canonicalUrl,
     })),
-    ...candidate.sources
-      .filter((source) => !liveEvidenceUrls.has(source.url))
+    ...(privateView ? candidate.sources : [])
+      .filter((source) => !dossierEvidence.some((item) => item.canonicalUrl === source.url))
       .map((source) => ({
         audit: "Last editorial profile",
+        coverage: "Private legacy editorial context; this source has not entered the approved public evidence projection.",
+        key: `legacy:${source.url}`,
         label: source.label,
         observed: source.observed,
         source: new URL(source.url).hostname,
@@ -67,7 +83,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
   ];
   const lastReviewed = overview.latestReviewedAt
     ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(overview.latestReviewedAt))
-    : candidate.sources.length ? "9 Aug 2026" : "Not yet reviewed";
+    : privateView && candidate.sources.length ? "9 Aug 2026" : "Not yet reviewed";
 
   return (
     <main className={`candidate-profile-page candidate-theme-${candidateIndex % 6}`}>
@@ -89,7 +105,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
           <div className="profile-title" data-profile-reveal>
             <div className="candidate-status-row">
               <span className="candidate-status"><i aria-hidden="true" /> {candidate.status}</span>
-              <span>Prospective candidate</span>
+              <span>Directory-listed identity</span>
             </div>
             <p className="eyebrow">{candidate.constituency} · {candidate.affiliation}</p>
             <h1>{candidate.name}</h1>
@@ -104,6 +120,16 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
             <p>Evidence profile</p>
             <strong>{candidate.evidenceCount} reviewed source{candidate.evidenceCount === 1 ? "" : "s"}</strong>
             <small>Last reviewed {lastReviewed}</small>
+            {identityProvenance ? (
+              <div className="identity-provenance">
+                <small>Approved identity basis</small>
+                <code>{identityProvenance.basisHash.slice(0, 12)}…</code>
+                <a href={identityProvenance.sourceUrl} rel="noreferrer" target="_blank">
+                  Open identity source page ↗
+                </a>
+                <small>Identity source only · not evidence of a policy position</small>
+              </div>
+            ) : null}
           </aside>
         </div>
       </section>
@@ -118,15 +144,12 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
               </div>
               <span>{privateView
                 ? founderPreview ? "Founder preview · private" : "Founder workspace · private"
-                : publishedOverview ? "Published analysis revision" : pageData.dataSource === "static-fallback" ? "Existing editorial profile" : "Public record"}</span>
+                : publishedOverview ? "Published analysis revision" : "Public record"}</span>
             </div>
-            <p>{privateView
-              ? overview.text
-              : publishedOverview?.summary
-                ?? "A generated campaign-platform overview has not yet been published. Claim-level citations and review are still being completed."}</p>
+            <p>{overview.text}</p>
             <dl className="campaign-overview-facts">
-              <div><dt>Reviewed sources</dt><dd>{publishedOverview?.sourceCount ?? overview.sourceCount}</dd></div>
-              {privateView ? <div><dt>Analysis workflow</dt><dd>{overview.analysisState.replaceAll("-", " ")}</dd></div> : <div><dt>Overview status</dt><dd>{publishedOverview ? "Published" : "Not published"}</dd></div>}
+              <div><dt>Reviewed sources</dt><dd>{privateView ? publishedOverview?.sourceCount ?? overview.sourceCount : overview.sourceCount}</dd></div>
+              {privateView ? <div><dt>Analysis workflow</dt><dd>{overview.analysisState.replaceAll("-", " ")}</dd></div> : <div><dt>Overview status</dt><dd>Source record only</dd></div>}
               {privateView ? <div><dt>Coverage fingerprint</dt><dd><code>{overview.inputHash.slice(0, 12)}…</code></dd></div> : null}
               {!privateView && publishedOverview ? <div><dt>Revision fingerprint</dt><dd><code>{publishedOverview.payloadHash.slice(0, 12)}…</code></dd></div> : null}
               {!privateView && publishedOverview ? <div><dt>Reviewed through</dt><dd>{publishedOverview.reviewedThrough ?? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(publishedOverview.createdAt))}</dd></div> : null}
@@ -190,16 +213,17 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
 
         <aside className="evidence-rail" data-profile-reveal>
           <div className="evidence-rail-header">
-            <p className="eyebrow eyebrow-dark">Source ledger</p>
-            <h2>Original evidence</h2>
+            <p className="eyebrow eyebrow-dark">Approved source ledger</p>
+            <h2>Reviewed source pages</h2>
           </div>
           {sourceLedger.map((source, index) => (
-            <a className="source-ledger-item" data-profile-reveal href={source.url} key={`${source.url}:${index}`} target="_blank" rel="noreferrer">
+            <a className="source-ledger-item" data-profile-reveal href={source.url} key={source.key} target="_blank" rel="noreferrer">
               <span>0{index + 1}</span>
               <div>
                 <strong>{source.label}</strong>
                 <small>{source.state} · {source.observed}</small>
                 <small className="ledger-url">{source.source}</small>
+                <small>{source.coverage}</small>
                 <small>{source.audit}</small>
               </div>
               <i aria-hidden="true">↗</i>
@@ -208,19 +232,17 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
           {!sourceLedger.length ? <p className="evidence-ledger-empty">No reviewed evidence is published for this candidate yet.</p> : null}
           <div className="audit-note">
             <span aria-hidden="true">⌁</span>
-            <h3>{privateView ? "Private analysis queue" : publishedOverview ? "Published analysis revision" : "Campaign overview pending"}</h3>
+            <h3>{privateView ? "Private analysis queue" : "Claim-level analysis withheld"}</h3>
             <p>{privateView
               ? "Approved source versions are now frozen to this candidate dossier. Claim extraction and position review are the next stage before any generated analysis can be published."
-              : publishedOverview
-                ? `Candidate campaign record v1 · revision ${publishedOverview.revisionId.slice(-12)}.`
-                : "Only a separately reviewed, cited and published analysis revision will appear here."}</p>
+              : "Source approval records coverage, not what the candidate believes. Positions remain unpublished until exact propositions and citations complete a separate review."}</p>
           </div>
           <a className="dispute-link" href="mailto:editor@realisle.im?subject=Profile evidence challenge">
             Challenge or correct this profile
           </a>
         </aside>
       </section>
-      <section className="shell profile-meet-more" aria-labelledby="meet-more-heading">
+      {privateView && otherCandidates.length ? <section className="shell profile-meet-more" aria-labelledby="meet-more-heading">
         <div>
           <p className="eyebrow eyebrow-dark">Keep exploring</p>
           <h2 id="meet-more-heading">Meet another candidate</h2>
@@ -242,7 +264,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ slug
             </a>
           ))}
         </div>
-      </section>
+      </section> : null}
       </ProfileMotion>
       <Footer />
     </main>

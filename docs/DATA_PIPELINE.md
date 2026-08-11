@@ -18,20 +18,22 @@ positions and summaries must link to their supporting source records.
    ingestion runs, editorial state and disputes are recorded in the `DB` D1
    database.
 5. Every material change appends a hash-linked audit event. Immutable database
-   triggers, installed idempotently by the evidence service after schema setup,
-   protect source captures, versions, decisions and revisions from being
-   rewritten in place.
+   triggers, installed by forward migrations and checked idempotently by the
+   evidence service, protect source captures, versions, decisions and
+   revisions from being rewritten in place.
 6. New records enter the admin review inbox. Only an explicit review decision
    can make derived civic information public; later corrections create a new
    revision rather than erasing history.
 
 Each Evidence Inbox decision is attached to the source item's current immutable
-version and content hash. Approving a version accepts it for editorial use but
-does not publish it. Rejecting a version requires a written reason, withholds
-the item, and retains both the captured source and immutable decision. A later
-publisher change creates a new version and returns the item to `needs-update`,
-so a previous approval or rejection can never silently carry over to changed
-content.
+version and content hash. Approving a version publishes only its reviewed
+citation metadata and explicitly confirmed candidate/topic/constituency filing;
+it never publishes copied source text or invents a political position.
+Rejecting a version requires a written reason, withholds it from every public
+evidence view, and retains both the captured source and immutable decision. A
+later publisher change creates a new version and returns the item to
+`needs-update`, so a previous approval or rejection can never silently carry
+over to changed content.
 
 ### Collection relevance and inbox routing
 
@@ -50,8 +52,9 @@ Direct candidate, dedicated election-source and election-language matches enter
 the default Election Evidence queue. Topic-only or constituency-only records
 enter Context Monitor, because a story about health, housing or Onchan is not by
 itself evidence about a candidate. Records with no relevance signal enter Broad
-Captures. The latter two routes remain private, reviewable and preserved for
-audit; routing never deletes a capture or silently upgrades it into evidence.
+Captures. Every route remains private until an explicit decision; approval can
+publish safe citation metadata to the reviewer-selected public sections.
+Routing never deletes a capture or silently upgrades it into a candidate claim.
 The dashboard loads every pending record, ranks Election Evidence before
 Context Monitor and Broad Captures, and presents 18-card client-side pages with
 route filters. A large general-news feed therefore remains visible without
@@ -61,9 +64,10 @@ The source version, content hash and collection assessment are immutable. The
 `source_item_version_collection_assessments` ledger stores one canonical reason
 JSON document per version, its SHA-256 hash, route, ruleset and the audit event
 that created it. Update and delete guards exist in both the forward migration
-and runtime trigger installer. The creating audit payload commits the reason
-hash/ruleset/route (or a stable digest for a directory batch), so the assessment
-is covered by the hash-linked audit chain rather than merely pointing at it.
+and runtime trigger installer. Every creating audit is a dedicated
+`source-item.relevance-assessed` event whose entity, source item, reason hash,
+ruleset and route must match the assessment row exactly, so the assessment is
+covered by the hash-linked audit chain rather than merely pointing at it.
 Current pre-review entity matches remain operational projections in
 `item_entities`; their rule and match method are displayed rather than hidden.
 Candidate links selected during approval are then frozen against the exact
@@ -79,6 +83,11 @@ audit transaction. An unchanged item encountered directly by its source follows
 the same audited path. Existing assessments are authoritative and are never
 silently rewritten; a future classifier change must use an explicit audited
 override and re-review design.
+
+An authorised reviewer can also choose **Prepare for review** on any exact
+legacy version. That operation freezes only the reason and routing suggestions,
+then refreshes the card so the reviewer can inspect them; it never approves or
+publishes the source in the same action.
 
 Approval requests carry the displayed assessment hash and ruleset. The review
 service rejects a provisional, missing or mismatched assessment, and commits
@@ -105,13 +114,12 @@ already-approved version appears in a separate candidate-filing reconciliation
 state. The founder can confirm or dismiss those matches through a new immutable
 review and audit event while the original source approval remains unchanged.
 
-Each confirmed candidate receives a private evidence dossier made only from the
-current approved source versions assigned to that candidacy. The candidate page
-shows that dossier to an authorised founder immediately, including the original
-URL, source, reviewed time, version identifier and review identifier. Public
-visitors see only evidence that has also completed the separate publication
-step. Raw captures, reviewer notes, contact details and rights-restricted source
-text are not exposed by this projection.
+Each confirmed candidate receives an evidence dossier made only from current
+approved source versions assigned to that candidacy. The founder can inspect it
+immediately. Public visitors see its citation metadata only after the
+candidate's separately reviewed identity shell is also approved and public.
+Raw captures, reviewer notes, contact details and rights-restricted source text
+are never exposed by this projection.
 
 Source versions represent semantic transitions rather than every polling pass.
 An unchanged observation keeps the current version, while a change creates a
@@ -283,8 +291,10 @@ identifier and no unpublished evidence. IDs are preferred as collaborators are
 added; the initial owner email is a bootstrap identity for the private Site.
 Approve and Reject controls in the Evidence Inbox call a same-origin,
 authenticated endpoint. The reviewer identity is derived server-side, and the
-review row, state transition and hash-linked audit event are committed in one
-database batch. Approval remains separate from public publication.
+review row, state transition, exact filing and hash-linked audit event are
+committed in one database batch. Approval publishes only the safe citation
+projection; portraits, transcripts, biography, generated claims and copied
+publisher content retain separate review and rights gates.
 
 For regular checks even when the private site has no visitors,
 `.github/workflows/evidence-ingestion.yml` runs every ten minutes. It is

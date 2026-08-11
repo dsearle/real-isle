@@ -3,36 +3,63 @@ import { Header } from "./components/Header";
 import { HomeViewExperience } from "./components/HomeViewExperience";
 import { IssueMatrix } from "./components/IssueMatrix";
 import {
-  candidates,
   constituencies,
   constituencyBoundarySource,
-  updates,
 } from "./lib/data";
+import {
+  getPublicCandidateDirectorySafe,
+  getPublicEvidenceSnapshotSafe,
+} from "./lib/evidence/public-evidence";
 import { getPublishableCandidatePortraitsSafe } from "./lib/evidence/public-media";
 import { getPublicMonitorSnapshotSafe } from "./lib/evidence/public-monitor";
 
 export const dynamic = "force-dynamic";
 
+const shortDate = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short" });
+
 export default async function Home() {
-  const [publishablePortraits, monitorSnapshot] = await Promise.all([
+  const [publicCandidates, publicEvidence, publishablePortraits, monitorSnapshot] = await Promise.all([
+    getPublicCandidateDirectorySafe(),
+    getPublicEvidenceSnapshotSafe({ limit: 40 }),
     getPublishableCandidatePortraitsSafe(),
     getPublicMonitorSnapshotSafe(),
   ]);
-  const homeCandidates = candidates.flatMap((candidate) => {
-    const constituency = constituencies.find((item) => item.name === candidate.constituency);
-    if (!constituency) return [];
-    return [{
-      constituencyId: constituency.id,
-      evidenceCount: candidate.evidenceCount,
-      initials: candidate.initials,
-      name: candidate.name,
-      portraitUrl: publishablePortraits[candidate.slug] ?? null,
-      priorities: candidate.priorities,
-      slug: candidate.slug,
-      status: candidate.status,
-      summary: candidate.summary,
-    }];
-  });
+  const homeCandidates = publicCandidates.map((candidate) => ({
+    constituencyId: candidate.constituencyId,
+    constituencyName: candidate.constituencyName,
+    evidenceCount: candidate.evidenceCount,
+    initials: candidate.initials,
+    name: candidate.name,
+    portraitUrl: publishablePortraits[candidate.slug] ?? null,
+    slug: candidate.slug,
+    status: candidate.status,
+  }));
+  const homeConstituencies = constituencies.map(({ id, name, short, x, y }) => ({
+    id,
+    name,
+    short,
+    x,
+    y,
+  }));
+  const homeUpdates = publicEvidence.records
+    .toSorted((left, right) => right.reviewedAt.localeCompare(left.reviewedAt))
+    .map((record) => ({
+      candidateSlugs: record.associations.flatMap((association) => (
+        association.type === "candidate" && association.slug ? [association.slug] : []
+      )),
+      constituencyIds: record.associations.flatMap((association) => (
+        association.type === "constituency" ? [association.id] : []
+      )),
+      date: shortDate.format(new Date(record.reviewedAt)),
+      dateQualifier: "Reviewed" as const,
+      sortDate: record.reviewedAt,
+      source: record.sourceName,
+      state: "Approved source",
+      stateClass: "state-reviewed",
+      summary: record.coverageSummary,
+      title: record.title,
+      url: record.canonicalUrl,
+    }));
 
   return (
     <main>
@@ -41,9 +68,9 @@ export default async function Home() {
       <HomeViewExperience
         boundarySourceUrl={constituencyBoundarySource.url}
         candidates={homeCandidates}
-        constituencies={constituencies}
+        constituencies={homeConstituencies}
         monitorSnapshot={monitorSnapshot}
-        updates={updates}
+        updates={homeUpdates}
       />
 
       <section className="ticker" aria-label="Important election dates">
@@ -60,25 +87,26 @@ export default async function Home() {
         <div className="section-heading split-heading">
           <div>
             <p className="eyebrow eyebrow-dark">The defining questions</p>
-            <h2>Compare what candidates have actually said.</h2>
+            <h2>Track each issue as reviewed positions emerge.</h2>
           </div>
           <p>
-            “Not found” is a meaningful result. The People’s Isle does not infer a
-            position from party, biography, likes or silence.
+            Source approval does not establish a position. The People’s Isle waits
+            for proposition-level evidence review and never infers a view from silence.
           </p>
         </div>
-        <IssueMatrix />
+        <IssueMatrix candidates={homeCandidates} constituencies={homeConstituencies} />
       </section>
 
       <section className="section shell trust-section">
         <div className="trust-card trust-card-main">
           <span className="trust-number">01</span>
           <p className="eyebrow eyebrow-dark">How The People’s Isle earns trust</p>
-          <h2>Readable in a minute. Auditable for years.</h2>
+          <h2>Readable in a minute. Linked back to evidence.</h2>
           <p>
-            Every published position keeps the source URL, observation time,
-            exact evidence span, editorial history and correction trail. The
-            first public version is founder-reviewed by David Searle.
+            Each public source card shows the reviewed source page, its
+            publication or observation date, approved associations and a
+            source-version fingerprint. The first public version is
+            founder-reviewed by David Searle.
           </p>
         </div>
         <div className="trust-card">
@@ -94,7 +122,7 @@ export default async function Home() {
         <div className="trust-card trust-card-accent">
           <span className="trust-icon" aria-hidden="true">↺</span>
           <h3>Open to challenge</h3>
-          <p>Every material claim can be disputed, corrected and followed through its revisions.</p>
+          <p>Visitors can challenge published material. Approved corrections update the public record.</p>
         </div>
       </section>
 

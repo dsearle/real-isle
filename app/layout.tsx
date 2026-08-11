@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CivicPreferencesProvider } from "./components/CivicPreferences";
+import { PublicPublicationRefresh } from "./components/PublicPublicationRefresh";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "The People’s Isle — Your Isle, Your Future",
     description:
-      "Explore every constituency, compare candidate positions and follow the original sources behind the 2026 House of Keys election.",
+      "Explore every constituency, compare reviewed candidate evidence and visit the source pages used for the 2026 House of Keys election.",
     type: "website",
     locale: "en_GB",
     siteName: "The People’s Isle",
@@ -38,7 +39,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
-        <CivicPreferencesProvider>{children}</CivicPreferencesProvider>
+        <CivicPreferencesProvider>
+          <PublicPublicationRefresh />
+          {children}
+        </CivicPreferencesProvider>
       </body>
     </html>
   );

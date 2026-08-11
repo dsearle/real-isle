@@ -1,6 +1,8 @@
 import { appendAuditEventWithStatements } from "./audit.ts";
 import { fingerprintCandidateSuggestions } from "./candidate-association.ts";
+import { readVerifiedCollectionReason } from "./collection-assessment.ts";
 import { deterministicId, sha256Hex } from "./integrity.ts";
+import { fingerprintScopeSuggestions } from "./scope-association.ts";
 import {
   normalizeReviewRationale,
   SourceItemReviewValidationError,
@@ -22,21 +24,26 @@ export {
 export type SourceItemReviewInput = {
   candidateIds: string[];
   candidateSuggestionFingerprint: string;
+  constituencyIds: string[];
   decision: SourceItemReviewDecision;
   expectedCollectionReasonHash: string;
   expectedCollectionRuleset: string;
   expectedContentHash: string;
+  expectedPreviousReviewId: string | null;
   expectedVersionId: string;
   itemId: string;
   rationale: string;
   reviewKind: "candidate-assignment" | "source-version";
   reviewerId: string;
+  scopeSuggestionFingerprint: string;
+  topicIds: string[];
 };
 
 export type SourceItemReviewReceipt = {
   auditEventHash: string;
   auditSequence: number;
   candidateIds: string[];
+  constituencyIds: string[];
   createdAt: string;
   decision: SourceItemReviewDecision;
   collectionReasonHash: string;
@@ -46,6 +53,8 @@ export type SourceItemReviewReceipt = {
   reviewKind: "candidate-assignment" | "source-version";
   reviewId: string;
   reviewState: string;
+  supersedesReviewId: string | null;
+  topicIds: string[];
   versionId: string;
 };
 
@@ -54,17 +63,21 @@ type ExistingReview = {
   decision: string;
   rationale: string;
   reviewer_id: string;
+  supersedes_review_id: string | null;
 };
 
-type PriorSourceReview = {
+type CurrentReview = {
   audit_sequence: number | null;
   decision: string;
+  id: string;
+  supersedes_review_id: string | null;
 };
 
 type ReviewAudit = {
   collection_reason_hash: string | null;
   collection_ruleset: string | null;
   event_hash: string;
+  scope_suggestion_fingerprint: string | null;
   sequence: number;
 };
 
@@ -84,6 +97,22 @@ type CandidateAssociationDecision = {
   mentionText: string;
 };
 
+type ScopeAssociation = {
+  confidence: number | null;
+  entity_id: string;
+  entity_type: "constituency" | "topic";
+  match_method: string | null;
+  mention_text: string | null;
+};
+
+type ScopeAssociationDecision = {
+  confidence: number;
+  entityId: string;
+  entityType: "constituency" | "topic";
+  matchMethod: string;
+  mentionText: string;
+};
+
 type SourceItemForReview = {
   content_hash: string | null;
   latest_snapshot_id: string | null;
@@ -94,8 +123,73 @@ type SourceItemForReview = {
 
 type FrozenCollectionAssessment = {
   canonical_reason_hash: string;
+  canonical_reason_json: string;
+  route: string;
   ruleset_id: string;
 };
+
+function auditActionForReviewKind(reviewKind: SourceItemReviewInput["reviewKind"]) {
+  return reviewKind === "candidate-assignment"
+    ? "source-item.candidate-assignment-reviewed"
+    : "source-item.reviewed";
+}
+
+function targetTypeForReviewKind(reviewKind: SourceItemReviewInput["reviewKind"]) {
+  return reviewKind === "candidate-assignment"
+    ? "source-item-version-assignment"
+    : "source-item-version";
+}
+
+async function currentReviewForTarget(
+  db: D1Database,
+  reviewKind: SourceItemReviewInput["reviewKind"],
+  versionId: string,
+) {
+  const auditAction = auditActionForReviewKind(reviewKind);
+  const targetType = targetTypeForReviewKind(reviewKind);
+  return db
+    .prepare(
+      `SELECT current_review.id, current_review.decision,
+              current_review.supersedes_review_id,
+              MAX(audit.sequence) AS audit_sequence
+         FROM reviews current_review
+         LEFT JOIN audit_events audit
+           ON audit.action = ?
+          AND audit.entity_type = 'source-item-version'
+          AND audit.entity_id = current_review.target_id
+          AND json_extract(audit.payload, '$.reviewId') = current_review.id
+        WHERE current_review.target_type = ?
+          AND current_review.target_id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM reviews successor
+             WHERE successor.supersedes_review_id = current_review.id
+          )
+        GROUP BY current_review.id, current_review.decision,
+                 current_review.supersedes_review_id
+        LIMIT 1`,
+    )
+    .bind(auditAction, targetType, versionId)
+    .first<CurrentReview>();
+}
+
+async function reviewIdForDecision(
+  reviewKind: SourceItemReviewInput["reviewKind"],
+  versionId: string,
+  decision: SourceItemReviewDecision,
+  expectedPreviousReviewId: string | null,
+) {
+  const targetType = targetTypeForReviewKind(reviewKind);
+  return expectedPreviousReviewId
+    ? deterministicId(
+        "review",
+        targetType,
+        versionId,
+        "supersedes",
+        expectedPreviousReviewId,
+        decision,
+      )
+    : deterministicId("review", targetType, versionId);
+}
 
 async function candidateAssociationsForReview(
   db: D1Database,
@@ -161,6 +255,126 @@ async function candidateSuggestionsForReview(
     }));
 }
 
+async function scopeSuggestionsForReview(
+  db: D1Database,
+  itemId: string,
+): Promise<ScopeAssociationDecision[]> {
+  const proposals = await db
+    .prepare(
+      `SELECT proposals.entity_type, proposals.entity_id,
+              proposals.mention_text, proposals.match_method, proposals.confidence
+         FROM item_entities proposals
+         JOIN policy_topics topics
+           ON proposals.entity_type = 'topic'
+          AND topics.id = proposals.entity_id
+          AND topics.active = 1
+        WHERE proposals.item_id = ?
+          AND proposals.entity_type = 'topic'
+        UNION ALL
+       SELECT proposals.entity_type, proposals.entity_id,
+              proposals.mention_text, proposals.match_method, proposals.confidence
+         FROM item_entities proposals
+         JOIN constituencies
+           ON proposals.entity_type = 'constituency'
+          AND constituencies.id = proposals.entity_id
+        WHERE proposals.item_id = ?
+          AND proposals.entity_type = 'constituency'
+        ORDER BY entity_type, entity_id`,
+    )
+    .bind(itemId, itemId)
+    .all<ScopeAssociation>();
+  return proposals.results.map((association) => ({
+    confidence: association.confidence ?? 0,
+    entityId: association.entity_id,
+    entityType: association.entity_type,
+    matchMethod: association.match_method ?? "unrecorded-match-method",
+    mentionText: association.mention_text ?? association.entity_id,
+  }));
+}
+
+async function scopeAssociationDecisions(
+  db: D1Database,
+  suggestions: ScopeAssociationDecision[],
+  constituencyIds: string[],
+  topicIds: string[],
+) {
+  const selected = new Set([
+    ...constituencyIds.map((id) => `constituency:${id}`),
+    ...topicIds.map((id) => `topic:${id}`),
+  ]);
+  const suggested = new Set(
+    suggestions.map((suggestion) => `${suggestion.entityType}:${suggestion.entityId}`),
+  );
+  const addedConstituencyIds = constituencyIds.filter(
+    (id) => !suggested.has(`constituency:${id}`),
+  );
+  const addedTopicIds = topicIds.filter((id) => !suggested.has(`topic:${id}`));
+  const added: ScopeAssociationDecision[] = [];
+
+  if (addedConstituencyIds.length) {
+    const placeholders = addedConstituencyIds.map(() => "?").join(", ");
+    const rows = await db
+      .prepare(`SELECT id, name FROM constituencies WHERE id IN (${placeholders}) ORDER BY id`)
+      .bind(...addedConstituencyIds)
+      .all<{ id: string; name: string }>();
+    if (rows.results.length !== addedConstituencyIds.length) {
+      throw new SourceItemReviewValidationError(
+        "One or more reviewer-added constituencies are no longer available.",
+      );
+    }
+    added.push(...rows.results.map((row) => ({
+      confidence: 1,
+      entityId: row.id,
+      entityType: "constituency" as const,
+      matchMethod: "reviewer-added-v1",
+      mentionText: row.name,
+    })));
+  }
+  if (addedTopicIds.length) {
+    const placeholders = addedTopicIds.map(() => "?").join(", ");
+    const rows = await db
+      .prepare(
+        `SELECT id, name FROM policy_topics
+          WHERE active = 1 AND id IN (${placeholders}) ORDER BY id`,
+      )
+      .bind(...addedTopicIds)
+      .all<{ id: string; name: string }>();
+    if (rows.results.length !== addedTopicIds.length) {
+      throw new SourceItemReviewValidationError(
+        "One or more reviewer-added topics are no longer active.",
+      );
+    }
+    added.push(...rows.results.map((row) => ({
+      confidence: 1,
+      entityId: row.id,
+      entityType: "topic" as const,
+      matchMethod: "reviewer-added-v1",
+      mentionText: row.name,
+    })));
+  }
+  if (added.some((association) => !selected.has(
+    `${association.entityType}:${association.entityId}`,
+  ))) {
+    throw new SourceItemReviewValidationError(
+      "One or more reviewer-added routes could not be verified.",
+    );
+  }
+  return {
+    confirmed: [
+      ...suggestions.filter((suggestion) => (
+        selected.has(`${suggestion.entityType}:${suggestion.entityId}`)
+      )),
+      ...added,
+    ].sort((left, right) => {
+      if (left.entityType !== right.entityType) return left.entityType < right.entityType ? -1 : 1;
+      return left.entityId < right.entityId ? -1 : left.entityId > right.entityId ? 1 : 0;
+    }),
+    rejected: suggestions.filter((suggestion) => (
+      !selected.has(`${suggestion.entityType}:${suggestion.entityId}`)
+    )),
+  };
+}
+
 export class SourceItemReviewConflictError extends Error {
   constructor(message = "This source changed or was already reviewed.") {
     super(message);
@@ -186,7 +400,7 @@ async function existingReceipt(
 ): Promise<SourceItemReviewReceipt | null> {
   const review = await db
     .prepare(
-      `SELECT decision, rationale, reviewer_id, created_at
+      `SELECT decision, rationale, reviewer_id, supersedes_review_id, created_at
          FROM reviews WHERE id = ?`,
     )
     .bind(reviewId)
@@ -195,7 +409,8 @@ async function existingReceipt(
   if (
     review.decision !== input.decision ||
     review.rationale !== rationale ||
-    review.reviewer_id !== input.reviewerId
+    review.reviewer_id !== input.reviewerId ||
+    review.supersedes_review_id !== input.expectedPreviousReviewId
   ) {
     throw new SourceItemReviewConflictError();
   }
@@ -203,14 +418,16 @@ async function existingReceipt(
     .prepare(
       `SELECT sequence, event_hash,
               json_extract(payload, '$.collectionReasonHash') AS collection_reason_hash,
-              json_extract(payload, '$.collectionRuleset') AS collection_ruleset
+              json_extract(payload, '$.collectionRuleset') AS collection_ruleset,
+              json_extract(payload, '$.scopeSuggestionFingerprint') AS scope_suggestion_fingerprint
          FROM audit_events
         WHERE action = ?
           AND entity_type = 'source-item-version'
           AND entity_id = ?
+          AND json_extract(payload, '$.reviewId') = ?
         ORDER BY sequence DESC LIMIT 1`,
     )
-    .bind(auditAction, input.expectedVersionId)
+    .bind(auditAction, input.expectedVersionId, reviewId)
     .first<ReviewAudit>();
   if (!audit) {
     throw new Error("The stored review has no matching audit event.");
@@ -218,6 +435,7 @@ async function existingReceipt(
   if (
     audit.collection_reason_hash !== input.expectedCollectionReasonHash
     || audit.collection_ruleset !== input.expectedCollectionRuleset
+    || audit.scope_suggestion_fingerprint !== input.scopeSuggestionFingerprint
   ) {
     throw new SourceItemReviewConflictError(
       "This source version was reviewed against a different collection assessment.",
@@ -239,6 +457,11 @@ async function existingReceipt(
   ) {
     throw new SourceItemReviewConflictError();
   }
+  const successor = await db
+    .prepare("SELECT id FROM reviews WHERE supersedes_review_id = ? LIMIT 1")
+    .bind(reviewId)
+    .first<{ id: string }>();
+  if (successor) throw new SourceItemReviewConflictError();
   const frozenCandidates = await db
     .prepare(
       `SELECT entity_id
@@ -260,10 +483,39 @@ async function existingReceipt(
       "This source version already has a different candidate dossier decision.",
     );
   }
+  const frozenScope = await db
+    .prepare(
+      `SELECT entity_type, entity_id
+         FROM source_item_version_entities
+        WHERE source_item_version_id = ?
+          AND review_id = ?
+          AND entity_type IN ('constituency', 'topic')
+          AND confirmation_state = 'confirmed'
+        ORDER BY entity_type, entity_id`,
+    )
+    .bind(input.expectedVersionId, reviewId)
+    .all<{ entity_id: string; entity_type: "constituency" | "topic" }>();
+  const frozenConstituencyIds = frozenScope.results
+    .filter((association) => association.entity_type === "constituency")
+    .map((association) => association.entity_id);
+  const frozenTopicIds = frozenScope.results
+    .filter((association) => association.entity_type === "topic")
+    .map((association) => association.entity_id);
+  if (
+    frozenConstituencyIds.length !== input.constituencyIds.length
+    || frozenConstituencyIds.some((id, index) => id !== input.constituencyIds[index])
+    || frozenTopicIds.length !== input.topicIds.length
+    || frozenTopicIds.some((id, index) => id !== input.topicIds[index])
+  ) {
+    throw new SourceItemReviewConflictError(
+      "This source version already has a different topic or constituency routing decision.",
+    );
+  }
   return {
     auditEventHash: audit.event_hash,
     auditSequence: audit.sequence,
     candidateIds: frozenCandidateIds,
+    constituencyIds: frozenConstituencyIds,
     createdAt: review.created_at,
     decision: input.decision,
     collectionReasonHash: input.expectedCollectionReasonHash,
@@ -273,6 +525,8 @@ async function existingReceipt(
     reviewKind,
     reviewId,
     reviewState: currentItem.review_state,
+    supersedesReviewId: review.supersedes_review_id,
+    topicIds: frozenTopicIds,
     versionId: input.expectedVersionId,
   };
 }
@@ -285,18 +539,31 @@ export async function reviewSourceItemVersion(
   const normalizedInput = {
     ...input,
     candidateIds: [...new Set(input.candidateIds)].sort(),
+    constituencyIds: [...new Set(input.constituencyIds)].sort(),
+    expectedPreviousReviewId: input.expectedPreviousReviewId ?? null,
+    topicIds: [...new Set(input.topicIds)].sort(),
   };
-  if (normalizedInput.decision === "rejected" && normalizedInput.candidateIds.length > 0) {
+  if (
+    normalizedInput.decision === "rejected"
+    && (
+      normalizedInput.candidateIds.length > 0
+      || normalizedInput.constituencyIds.length > 0
+      || normalizedInput.topicIds.length > 0
+    )
+  ) {
     throw new SourceItemReviewValidationError(
-      "Rejected evidence cannot be assigned to a candidate dossier.",
+      "Rejected evidence cannot be routed to a candidate, topic or constituency section.",
+    );
+  }
+  if (
+    normalizedInput.reviewKind === "candidate-assignment"
+    && (normalizedInput.constituencyIds.length > 0 || normalizedInput.topicIds.length > 0)
+  ) {
+    throw new SourceItemReviewValidationError(
+      "Candidate filing decisions cannot change topic or constituency routing.",
     );
   }
   const rationale = normalizeReviewRationale(input.decision, input.rationale);
-  const sourceReviewId = await deterministicId(
-    "review",
-    "source-item-version",
-    input.expectedVersionId,
-  );
   const item = await db
     .prepare(
       `SELECT latest_version_id, latest_snapshot_id, content_hash,
@@ -308,7 +575,7 @@ export async function reviewSourceItemVersion(
   if (!item) throw new SourceItemReviewNotFoundError();
   const collectionAssessment = await db
     .prepare(
-      `SELECT canonical_reason_hash, ruleset_id
+      `SELECT canonical_reason_hash, canonical_reason_json, route, ruleset_id
          FROM source_item_version_collection_assessments
         WHERE source_item_version_id = ?`,
     )
@@ -327,40 +594,61 @@ export async function reviewSourceItemVersion(
       "The reason for collecting this source changed while you were reviewing it. Refresh and check the frozen assessment.",
     );
   }
+  const frozenCollectionReason = await readVerifiedCollectionReason({
+    canonical_reason_hash: collectionAssessment.canonical_reason_hash,
+    canonical_reason_json: collectionAssessment.canonical_reason_json,
+    collection_route: collectionAssessment.route,
+    collection_ruleset_id: collectionAssessment.ruleset_id,
+  });
+  if (!frozenCollectionReason) {
+    throw new SourceItemReviewConflictError(
+      "The frozen collection assessment could not be verified. Nothing was changed.",
+    );
+  }
 
-  const priorSourceReview = await db
-    .prepare(
-      `SELECT source_review.decision, audit.sequence AS audit_sequence
-         FROM reviews source_review
-         LEFT JOIN audit_events audit
-           ON audit.action = 'source-item.reviewed'
-          AND audit.entity_type = 'source-item-version'
-          AND audit.entity_id = source_review.target_id
-        WHERE source_review.id = ?
-          AND source_review.target_type = 'source-item-version'
-          AND source_review.target_id = ?
-        ORDER BY audit.sequence DESC LIMIT 1`,
-    )
-    .bind(sourceReviewId, input.expectedVersionId)
-    .first<PriorSourceReview>();
-  if (input.reviewKind === "candidate-assignment" && priorSourceReview && !priorSourceReview.audit_sequence) {
+  const reviewKind = input.reviewKind;
+  const currentSourceReview = await currentReviewForTarget(
+    db,
+    "source-version",
+    input.expectedVersionId,
+  );
+  if (reviewKind === "candidate-assignment" && currentSourceReview && !currentSourceReview.audit_sequence) {
     throw new Error("The stored source review has no matching audit event.");
   }
-  const reviewKind = input.reviewKind;
   if (
     reviewKind === "candidate-assignment"
-    && (item.review_state !== "approved" || priorSourceReview?.decision !== "approved")
+    && (
+      item.review_state !== "approved"
+      || item.publication_state !== "published"
+      || currentSourceReview?.decision !== "approved"
+      || currentSourceReview.supersedes_review_id !== null
+    )
   ) {
     throw new SourceItemReviewConflictError(
       "Candidate filing can only be reconciled against a current approved source version.",
     );
   }
-  const reviewId = reviewKind === "candidate-assignment"
-    ? await deterministicId("review", "source-item-version-assignment", input.expectedVersionId)
-    : sourceReviewId;
-  const auditAction = reviewKind === "candidate-assignment"
-    ? "source-item.candidate-assignment-reviewed"
-    : "source-item.reviewed";
+  const currentTargetReview = reviewKind === "source-version"
+    ? currentSourceReview
+    : await currentReviewForTarget(db, "candidate-assignment", input.expectedVersionId);
+  if (currentTargetReview && !currentTargetReview.audit_sequence) {
+    throw new Error("The stored current review has no matching audit event.");
+  }
+  const currentLegacyAssignmentReview = reviewKind === "source-version"
+    && currentTargetReview?.decision === "approved"
+    && currentTargetReview.supersedes_review_id === null
+    ? await currentReviewForTarget(db, "candidate-assignment", input.expectedVersionId)
+    : null;
+  if (currentLegacyAssignmentReview && !currentLegacyAssignmentReview.audit_sequence) {
+    throw new Error("The stored current candidate assignment has no matching audit event.");
+  }
+  const reviewId = await reviewIdForDecision(
+    reviewKind,
+    input.expectedVersionId,
+    input.decision,
+    normalizedInput.expectedPreviousReviewId,
+  );
+  const auditAction = auditActionForReviewKind(reviewKind);
   const expectedReviewState = reviewKind === "candidate-assignment"
     ? "approved"
     : input.decision;
@@ -375,10 +663,24 @@ export async function reviewSourceItemVersion(
     rationale,
   );
   if (replay) return replay;
+  if ((currentTargetReview?.id ?? null) !== normalizedInput.expectedPreviousReviewId) {
+    throw new SourceItemReviewConflictError(
+      "This editorial decision changed while you were reviewing it. Refresh before reconsidering it.",
+    );
+  }
+  if (currentTargetReview?.decision === input.decision) {
+    throw new SourceItemReviewValidationError(
+      `This source is already ${input.decision}. Choose the other decision to reconsider it.`,
+    );
+  }
   const staleSourceReview = reviewKind === "source-version" && (
     item.latest_version_id !== input.expectedVersionId ||
     item.content_hash !== input.expectedContentHash ||
-    !["unreviewed", "needs-update"].includes(item.review_state)
+    (
+      currentTargetReview
+        ? item.review_state !== currentTargetReview.decision
+        : !["unreviewed", "needs-update"].includes(item.review_state)
+    )
   );
   const staleAssignmentReview = reviewKind === "candidate-assignment" && (
     item.latest_version_id !== input.expectedVersionId ||
@@ -390,8 +692,8 @@ export async function reviewSourceItemVersion(
   }
 
   const createdAt = new Date().toISOString();
-  const nextPublicationState = reviewKind === "source-version" && input.decision === "rejected"
-    ? "withheld"
+  const nextPublicationState = reviewKind === "source-version"
+    ? input.decision === "approved" ? "published" : "withheld"
     : item.publication_state;
   const rationaleHash = await sha256Hex(rationale);
   const currentCandidateSuggestions = normalizedInput.decision === "approved"
@@ -413,6 +715,25 @@ export async function reviewSourceItemVersion(
       "The detected candidate suggestions changed while you were reviewing them. Refresh and check the current set.",
     );
   }
+  const currentScopeSuggestions = reviewKind === "source-version"
+    && normalizedInput.decision === "approved"
+    ? await scopeSuggestionsForReview(db, normalizedInput.itemId)
+    : [];
+  if (
+    reviewKind === "source-version"
+    && normalizedInput.decision === "approved"
+    && await fingerprintScopeSuggestions(currentScopeSuggestions.map((association) => ({
+      confidence: association.confidence,
+      entityType: association.entityType,
+      id: association.entityId,
+      matchMethod: association.matchMethod,
+      mentionText: association.mentionText,
+    }))) !== normalizedInput.scopeSuggestionFingerprint
+  ) {
+    throw new SourceItemReviewConflictError(
+      "The detected topic or constituency suggestions changed while you were reviewing them. Refresh and check the current set.",
+    );
+  }
   const candidateAssociations = normalizedInput.decision === "approved"
     ? await candidateAssociationsForReview(
         db,
@@ -426,6 +747,37 @@ export async function reviewSourceItemVersion(
         (candidate) => !normalizedInput.candidateIds.includes(candidate.entityId),
       )
     : [];
+  const scopeAssociations = reviewKind === "source-version"
+    && normalizedInput.decision === "approved"
+    ? await scopeAssociationDecisions(
+        db,
+        currentScopeSuggestions,
+        normalizedInput.constituencyIds,
+        normalizedInput.topicIds,
+      )
+    : { confirmed: [], rejected: [] };
+  const previousAssociationReviewIds = [
+    currentTargetReview?.id,
+    currentLegacyAssignmentReview?.id,
+  ].filter((reviewId): reviewId is string => Boolean(reviewId));
+  const previouslyConfirmedCandidates = previousAssociationReviewIds.length > 0
+    ? await db
+        .prepare(
+          `SELECT entity_id
+             FROM source_item_version_entities
+            WHERE source_item_version_id = ?
+              AND review_id IN (${previousAssociationReviewIds.map(() => "?").join(", ")})
+              AND entity_type = 'candidacy'
+              AND confirmation_state = 'confirmed'
+            ORDER BY entity_id`,
+        )
+        .bind(input.expectedVersionId, ...previousAssociationReviewIds)
+        .all<{ entity_id: string }>()
+    : { results: [] as Array<{ entity_id: string }> };
+  const candidatesNeedingAnalysis = [...new Set([
+    ...previouslyConfirmedCandidates.results.map((candidate) => candidate.entity_id),
+    ...candidateAssociations.map((association) => association.entityId),
+  ])].sort();
 
   try {
     const audit = await appendAuditEventWithStatements(
@@ -450,9 +802,13 @@ export async function reviewSourceItemVersion(
           previousReviewState: item.review_state,
           rationaleHash,
           rejectedCandidateAssociations: rejectedAssociations,
+          confirmedScopeAssociations: scopeAssociations.confirmed,
+          rejectedScopeAssociations: scopeAssociations.rejected,
           reviewKind,
           reviewId,
+          scopeSuggestionFingerprint: normalizedInput.scopeSuggestionFingerprint,
           snapshotId: item.latest_snapshot_id,
+          supersedesReviewId: normalizedInput.expectedPreviousReviewId,
           versionId: input.expectedVersionId,
         },
       },
@@ -470,6 +826,7 @@ export async function reviewSourceItemVersion(
               input.decision,
               rationale,
               input.reviewerId,
+              normalizedInput.expectedPreviousReviewId,
               createdAt,
             ),
         ];
@@ -483,6 +840,7 @@ export async function reviewSourceItemVersion(
                 input.itemId,
                 input.expectedVersionId,
                 input.expectedContentHash,
+                item.review_state,
               ),
           );
         }
@@ -504,6 +862,72 @@ export async function reviewSourceItemVersion(
                 reviewId,
                 createdAt,
               ),
+          );
+        }
+        for (const association of rejectedAssociations) {
+          statements.push(
+            db
+              .prepare(
+                `INSERT INTO source_item_version_entities (
+                   source_item_version_id, entity_type, entity_id, mention_text,
+                   match_method, confidence, review_id, confirmation_state, created_at
+                 ) VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'rejected', ?)`,
+              )
+              .bind(
+                input.expectedVersionId,
+                association.entityId,
+                association.mentionText,
+                association.matchMethod,
+                association.confidence,
+                reviewId,
+                createdAt,
+              ),
+          );
+        }
+        for (const association of scopeAssociations.confirmed) {
+          statements.push(
+            db
+              .prepare(
+                `INSERT INTO source_item_version_entities (
+                   source_item_version_id, entity_type, entity_id, mention_text,
+                   match_method, confidence, review_id, confirmation_state, created_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)`,
+              )
+              .bind(
+                input.expectedVersionId,
+                association.entityType,
+                association.entityId,
+                association.mentionText,
+                association.matchMethod,
+                association.confidence,
+                reviewId,
+                createdAt,
+              ),
+          );
+        }
+        for (const association of scopeAssociations.rejected) {
+          statements.push(
+            db
+              .prepare(
+                `INSERT INTO source_item_version_entities (
+                   source_item_version_id, entity_type, entity_id, mention_text,
+                   match_method, confidence, review_id, confirmation_state, created_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 'rejected', ?)`,
+              )
+              .bind(
+                input.expectedVersionId,
+                association.entityType,
+                association.entityId,
+                association.mentionText,
+                association.matchMethod,
+                association.confidence,
+                reviewId,
+                createdAt,
+              ),
+          );
+        }
+        for (const candidateId of candidatesNeedingAnalysis) {
+          statements.push(
             db
               .prepare(
                 `INSERT INTO candidate_intelligence_heads (
@@ -528,27 +952,7 @@ export async function reviewSourceItemVersion(
                    END,
                    updated_at = CURRENT_TIMESTAMP`,
               )
-              .bind(association.entityId),
-          );
-        }
-        for (const association of rejectedAssociations) {
-          statements.push(
-            db
-              .prepare(
-                `INSERT INTO source_item_version_entities (
-                   source_item_version_id, entity_type, entity_id, mention_text,
-                   match_method, confidence, review_id, confirmation_state, created_at
-                 ) VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'rejected', ?)`,
-              )
-              .bind(
-                input.expectedVersionId,
-                association.entityId,
-                association.mentionText,
-                association.matchMethod,
-                association.confidence,
-                reviewId,
-                createdAt,
-              ),
+              .bind(candidateId),
           );
         }
         return statements;
@@ -558,6 +962,7 @@ export async function reviewSourceItemVersion(
       auditEventHash: audit.eventHash,
       auditSequence: audit.sequence,
       candidateIds: normalizedInput.candidateIds,
+      constituencyIds: normalizedInput.constituencyIds,
       createdAt,
       decision: input.decision,
       collectionReasonHash: input.expectedCollectionReasonHash,
@@ -567,6 +972,8 @@ export async function reviewSourceItemVersion(
       reviewKind,
       reviewId,
       reviewState: expectedReviewState,
+      supersedesReviewId: normalizedInput.expectedPreviousReviewId,
+      topicIds: normalizedInput.topicIds,
       versionId: input.expectedVersionId,
     };
   } catch (error) {

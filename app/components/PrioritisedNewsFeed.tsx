@@ -26,7 +26,7 @@ function UpdateCard({ update }: { update: ElectionUpdate }) {
         </div>
         <h2>{update.title}</h2>
         <p>{update.summary}</p>
-        <a href={update.url} target="_blank" rel="noreferrer">Open original source ↗</a>
+        <a href={update.url} target="_blank" rel="noreferrer">Visit reviewed source page ↗</a>
       </div>
     </article>
   );

@@ -37,7 +37,13 @@ test("server-renders The People’s Isle election hub", async () => {
   assert.match(html, /Discovery is not publication/);
   assert.match(html, /Configured for periodic checks/);
   assert.match(html, /New records stay private until a human reviews them/);
-  assert.match(html, /Open evidence profile for Claire Christian, Douglas South/);
+  assert.match(html, /Reviewed source preview/);
+  assert.doesNotMatch(html, /All reviewed updates|Auditable for years|original source/i);
+  assert.match(html, /waits for proposition-level evidence review/);
+  assert.doesNotMatch(
+    html,
+    /Claire Christian|Rob Callister|Rachel Glover|Peter Shimmin|Tim Johnston|Steve Curphey/,
+  );
   assert.match(html, /12/);
   assert.match(html, /constituencies/i);
   assert.match(html, /Vote compass/i);
@@ -45,25 +51,11 @@ test("server-renders The People’s Isle election hub", async () => {
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
-test("candidate cards lead to a complete candidate profile", async () => {
+test("candidate pages fail closed when the verified live profile is unavailable", async () => {
   const response = await render("/candidates/claire-christian");
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 404);
   const html = await response.text();
-  assert.match(html, /Claire Christian/);
-  assert.match(html, /Stated priorities/);
-  assert.match(html, /Issue record/);
-  assert.match(html, /Original evidence/);
-  assert.match(html, /Campaign evidence/);
-  assert.match(html, /Evidence overview/);
-  assert.match(html, /Overview status/);
-  assert.match(html, /A generated campaign-platform overview has not yet been published/);
-  assert.match(html, /not how they are doing/);
-  assert.match(html, /not a measure of popularity, momentum or likelihood of election/);
-  assert.doesNotMatch(html, /Founder preview|Founder workspace|Private analysis queue|Analysis workflow/);
-  assert.doesNotMatch(html, /reviewer_id|storage_key|Review [0-9a-f]{8}/i);
-  assert.match(html, /Animated profile placeholder for Claire Christian/);
-  assert.match(html, /Meet another candidate/);
-  assert.match(html, /data-profile-reveal/);
+  assert.doesNotMatch(html, /Claire Christian|Founder preview|reviewer_id|storage_key/i);
 });
 
 test("server-renders the private compass", async () => {
@@ -79,8 +71,10 @@ test("server-renders the election desk with a separate public research monitor",
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /The election desk/);
-  assert.match(html, /The launch briefing is founder-curated and does not mirror the collection stream/);
-  assert.match(html, /Human-curated, not an automatic monitor feed/);
+  assert.match(html, /Approved evidence library/);
+  assert.match(html, /What the reviewed sources cover/);
+  assert.match(html, /temporarily unavailable/);
+  assert.match(html, /Candidate association is not treated as a policy position or endorsement/i);
   assert.match(html, /The source watch/);
   assert.match(html, /Discovery is not publication/);
   assert.doesNotMatch(html, /Unreviewed source stream|canonical_url|reviewer_id|snapshot_id/i);

@@ -1,6 +1,14 @@
 export const candidateDirectoryStatesSql = `SELECT profiles.slug, profiles.candidacy_id,
               profiles.current_profile_observation_id,
+              profiles.current_basis_hash,
+              candidacies.affiliation,
+              candidacies.constituency_id,
+              canonical_constituency.name AS constituency_name,
               candidacies.declaration_status,
+              candidacies.verification_state,
+              people.full_name,
+              candidacies.person_id,
+              people.profile_state AS people_profile_state,
               observations.payload_hash AS directory_payload_hash,
               COALESCE(
                 (
@@ -30,6 +38,9 @@ export const candidateDirectoryStatesSql = `SELECT profiles.slug, profiles.candi
               profile_observations.snapshot_id AS current_profile_snapshot_id
        FROM candidate_profiles profiles
        JOIN candidacies ON candidacies.id = profiles.candidacy_id
+       JOIN people ON people.id = candidacies.person_id
+       JOIN constituencies canonical_constituency
+         ON canonical_constituency.id = candidacies.constituency_id
        JOIN candidate_profile_observations observations
          ON observations.id = profiles.current_directory_observation_id
        LEFT JOIN candidate_profile_observations profile_observations

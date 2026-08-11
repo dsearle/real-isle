@@ -6,11 +6,13 @@ import {
   sourceItemVersionEntityNoDeleteSql,
   sourceItemVersionEntityNoUpdateSql,
 } from "./candidate-intelligence-sql.ts";
+import { candidateProfileVersionReviewGuardSql } from "./candidate-profile-review-sql.ts";
 import {
   sourceItemCandidateAssignmentReviewGuardSql,
   sourceItemVersionReviewGuardSql,
 } from "./review-sql.ts";
 import {
+  collectionAssessmentCurrentVersionGuardSql,
   collectionAssessmentNoDeleteSql,
   collectionAssessmentNoUpdateSql,
 } from "./collection-assessment.ts";
@@ -57,6 +59,8 @@ const evidenceTriggerSql = [
    BEGIN SELECT RAISE(ABORT, 'source item versions are immutable'); END`,
   collectionAssessmentNoUpdateSql,
   collectionAssessmentNoDeleteSql,
+  `DROP TRIGGER IF EXISTS collection_assessment_current_version_guard`,
+  collectionAssessmentCurrentVersionGuardSql,
   `CREATE TRIGGER IF NOT EXISTS candidate_profile_observations_no_update
    BEFORE UPDATE ON candidate_profile_observations
    BEGIN SELECT RAISE(ABORT, 'candidate profile observations are immutable'); END`,
@@ -75,8 +79,37 @@ const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS reviews_no_delete
    BEFORE DELETE ON reviews
    BEGIN SELECT RAISE(ABORT, 'review decisions are immutable'); END`,
+  `DROP TRIGGER IF EXISTS reviews_supersession_guard`,
+  `CREATE TRIGGER reviews_supersession_guard
+   BEFORE INSERT ON reviews
+   BEGIN
+     SELECT CASE
+       WHEN NEW.decision NOT IN ('approved', 'rejected')
+       THEN RAISE(ABORT, 'invalid editorial decision')
+     END;
+     SELECT CASE
+       WHEN NEW.supersedes_review_id = NEW.id
+       THEN RAISE(ABORT, 'a review cannot supersede itself')
+     END;
+     SELECT CASE
+       WHEN NEW.supersedes_review_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM reviews prior_review
+           WHERE prior_review.id = NEW.supersedes_review_id
+             AND prior_review.target_type = NEW.target_type
+             AND prior_review.target_id = NEW.target_id
+             AND prior_review.decision != NEW.decision
+             AND NOT EXISTS (
+               SELECT 1 FROM reviews successor
+                WHERE successor.supersedes_review_id = prior_review.id
+             )
+        )
+       THEN RAISE(ABORT, 'review supersession target is stale or invalid')
+     END;
+   END`,
   `DROP TRIGGER IF EXISTS reviews_source_item_version_guard`,
   `DROP TRIGGER IF EXISTS reviews_source_item_candidate_assignment_guard`,
+  `DROP TRIGGER IF EXISTS reviews_candidate_profile_version_guard`,
   `DROP TRIGGER IF EXISTS source_item_version_entities_insert_guard`,
   `DROP TRIGGER IF EXISTS source_item_version_entities_no_update`,
   `DROP TRIGGER IF EXISTS source_item_version_entities_no_delete`,
@@ -85,6 +118,7 @@ const evidenceTriggerSql = [
   `DROP TRIGGER IF EXISTS candidate_intelligence_revision_update_guard`,
   sourceItemVersionReviewGuardSql,
   sourceItemCandidateAssignmentReviewGuardSql,
+  candidateProfileVersionReviewGuardSql,
   sourceItemVersionEntityInsertGuardSql,
   sourceItemVersionEntityNoUpdateSql,
   sourceItemVersionEntityNoDeleteSql,

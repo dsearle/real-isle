@@ -1,13 +1,26 @@
-import { getEvidenceBindings } from "../../../db";
-import { fingerprintCandidateSuggestions } from "./candidate-association";
-import { readVerifiedCollectionReason } from "./collection-assessment";
+import { fingerprintCandidateSuggestions } from "./candidate-association.ts";
+import {
+  approvedCandidateProfileBasisSql,
+  backfillCandidateProfileBasisHashes,
+} from "./candidate-profile-basis.ts";
+import { readVerifiedCollectionReason } from "./collection-assessment.ts";
 import {
   COLLECTION_ROUTING_RULE,
   projectCollectionReason,
   type CollectionReason,
   type CollectionSignal,
-} from "./collection-reason";
-import { ensureEvidenceTriggers } from "./triggers";
+} from "./collection-reason.ts";
+import { ensureEvidenceTriggers } from "./triggers.ts";
+import { fingerprintScopeSuggestions } from "./scope-association.ts";
+
+type EvidenceDecisionHead = {
+  createdAt: string;
+  decision: "approved" | "rejected";
+  id: string;
+  rationale: string;
+  reviewerId: string;
+  supersedesReviewId: string | null;
+};
 
 export type EvidenceSourceStatus = {
   active: number;
@@ -46,6 +59,9 @@ export type EvidenceRunStatus = {
 
 export type EvidenceReviewItem = {
   association_review_only: number;
+  assignmentDecisionCount: number;
+  assignmentReviewAvailable: boolean;
+  assignmentState: "approved" | "not-applicable" | "pending" | "rejected";
   canonical_url: string;
   candidateAssociations: Array<{
     candidacyId: string;
@@ -57,17 +73,26 @@ export type EvidenceReviewItem = {
   }>;
   candidate_ids: string | null;
   candidateSuggestionFingerprint: string;
+  collectionScopeSuggestionFingerprint: string;
   collectionReason: CollectionReason;
   collectionReasonHash: string | null;
   collectionReasonRuleset: string;
   collectionReasonState: "frozen" | "not-yet-frozen";
   content_hash: string | null;
   constituencyAssociations: CollectionSignal[];
+  currentAssignmentDecision: EvidenceDecisionHead | null;
+  currentDecision: EvidenceDecisionHead | null;
+  decisionCount: number;
+  editorialState: "approved" | "pending" | "rejected";
   first_seen_at: string;
   id: string;
   item_type: string;
   latest_snapshot_id: string | null;
   latest_version_id: string | null;
+  lastApprovedAssignmentCandidateIds: string[];
+  lastApprovedCandidateIds: string[];
+  lastApprovedConstituencyIds: string[];
+  lastApprovedTopicIds: string[];
   publication_state: string;
   published_at: string | null;
   review_state: string;
@@ -83,17 +108,49 @@ type EvidenceReviewItemRow = Omit<
   EvidenceReviewItem,
   | "candidateAssociations"
   | "candidateSuggestionFingerprint"
+  | "collectionScopeSuggestionFingerprint"
   | "collectionReason"
   | "constituencyAssociations"
+  | "currentAssignmentDecision"
+  | "currentDecision"
+  | "assignmentDecisionCount"
+  | "assignmentReviewAvailable"
+  | "assignmentState"
+  | "decisionCount"
+  | "editorialState"
+  | "lastApprovedAssignmentCandidateIds"
+  | "lastApprovedCandidateIds"
+  | "lastApprovedConstituencyIds"
+  | "lastApprovedTopicIds"
   | "topicAssociations"
 > & {
   candidate_associations_json: string;
+  assignment_decision_count: number;
+  assignment_review_available: number;
   canonical_reason_hash: string | null;
   canonical_reason_json: string | null;
   collection_route_hint: string;
   collection_route: string | null;
   collection_ruleset_id: string | null;
   constituency_associations_json: string;
+  current_review_created_at: string | null;
+  current_review_decision: string | null;
+  current_review_id: string | null;
+  current_review_rationale: string | null;
+  current_reviewer_id: string | null;
+  current_supersedes_review_id: string | null;
+  current_assignment_review_created_at: string | null;
+  current_assignment_review_decision: string | null;
+  current_assignment_review_id: string | null;
+  current_assignment_review_rationale: string | null;
+  current_assignment_reviewer_id: string | null;
+  current_assignment_supersedes_review_id: string | null;
+  decision_count: number;
+  editorial_state: string;
+  last_approved_assignment_candidate_ids_json: string;
+  last_approved_candidate_ids_json: string;
+  last_approved_constituency_ids_json: string;
+  last_approved_topic_ids_json: string;
   topic_associations_json: string;
 };
 
@@ -134,16 +191,40 @@ function parseCollectionSignals(value: string) {
   }
 }
 
+function parseIdArray(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.filter((entry): entry is string => (
+      typeof entry === "string" && entry.length > 0 && entry.length <= 160
+    )))].sort();
+  } catch {
+    return [];
+  }
+}
+
 export type CandidateRegistryStatus = {
+  affiliation: string;
   biography_excerpt: string | null;
   biography_paragraph_count: number;
   candidacy_id: string;
   completeness_state: string;
   constituency_name: string;
+  constituency_id: string;
+  current_basis_hash: string | null;
+  current_profile_review_created_at: string | null;
+  current_profile_review_decision: "approved" | "rejected" | null;
+  current_profile_review_id: string | null;
+  current_profile_review_rationale: string | null;
+  declaration_status: string;
+  directory_payload_hash: string;
+  directory_version_id: string | null;
+  profile_decision_count: number;
   document_count: number;
   dossier_evidence_count: number;
   full_name: string;
   intelligence_state: string;
+  identity_source_url: string | null;
   interview_count: number;
   last_profile_checked_at: string | null;
   link_count: number;
@@ -152,6 +233,8 @@ export type CandidateRegistryStatus = {
   portrait_remote_url: string | null;
   portrait_rights_state: string | null;
   portrait_variant: string | null;
+  observed_constituency_id: string;
+  observed_constituency_name: string;
   profile_snapshot_hash: string | null;
   profile_url: string;
   publication_state: string;
@@ -181,6 +264,11 @@ export type TranscriptQueueItem = {
   transcript_review_state: string | null;
 };
 
+export type EvidenceRoutingOption = {
+  id: string;
+  label: string;
+};
+
 export type EvidenceDashboard = {
   auditHeadHash: string;
   auditSequence: number;
@@ -197,6 +285,8 @@ export type EvidenceDashboard = {
     pendingEditorial: number;
     pendingEvidenceReview: number;
     pendingReview: number;
+    approvedEvidence: number;
+    rejectedEvidence: number;
     parsedCandidateProfiles: number;
     publishableCandidatePortraits: number;
     reviews: number;
@@ -209,6 +299,10 @@ export type EvidenceDashboard = {
   };
   recentRuns: EvidenceRunStatus[];
   reviewItems: EvidenceReviewItem[];
+  routingOptions: {
+    constituencies: EvidenceRoutingOption[];
+    topics: EvidenceRoutingOption[];
+  };
   sources: EvidenceSourceStatus[];
   transcriptQueue: TranscriptQueueItem[];
 };
@@ -225,6 +319,8 @@ type CountRow = {
   pending_editorial: number;
   pending_evidence_review: number;
   pending_review: number;
+  approved_evidence: number;
+  rejected_evidence: number;
   pending_source_version_review: number;
   parsed_candidate_profiles: number;
   publishable_candidate_portraits: number;
@@ -246,6 +342,11 @@ const pendingReviewPredicate = `(
        WHERE source_review.target_type = 'source-item-version'
          AND source_review.target_id = items.latest_version_id
          AND source_review.decision = 'approved'
+         AND source_review.supersedes_review_id IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM reviews source_successor
+            WHERE source_successor.supersedes_review_id = source_review.id
+         )
     )
     AND EXISTS (
       SELECT 1
@@ -308,10 +409,107 @@ const collectionRouteExpression = `COALESCE(
 const directEvidencePredicate = `(${collectionRouteExpression}) = 'evidence-review'`;
 const contextualEvidencePredicate = `(${collectionRouteExpression}) = 'context-monitoring'`;
 
-export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
-  const { DB: db } = getEvidenceBindings();
+const currentOrPreviousApprovedSourceReviewSql = `(SELECT CASE
+    WHEN source_review.decision = 'approved' THEN source_review.id
+    ELSE source_review.supersedes_review_id
+  END
+  FROM reviews source_review
+ WHERE source_review.target_type = 'source-item-version'
+   AND source_review.target_id = items.latest_version_id
+   AND NOT EXISTS (
+     SELECT 1 FROM reviews source_successor
+      WHERE source_successor.supersedes_review_id = source_review.id
+   )
+ LIMIT 1)`;
+
+const currentOrPreviousEffectiveCandidateReviewSql = `(SELECT CASE
+    WHEN approved_source.supersedes_review_id IS NULL
+      AND EXISTS (
+        SELECT 1 FROM reviews assignment_head
+         WHERE assignment_head.target_type = 'source-item-version-assignment'
+           AND assignment_head.target_id = items.latest_version_id
+           AND NOT EXISTS (
+             SELECT 1 FROM reviews assignment_successor
+              WHERE assignment_successor.supersedes_review_id = assignment_head.id
+           )
+      )
+    THEN (
+      SELECT CASE WHEN assignment_head.decision = 'approved' THEN assignment_head.id ELSE NULL END
+        FROM reviews assignment_head
+       WHERE assignment_head.target_type = 'source-item-version-assignment'
+         AND assignment_head.target_id = items.latest_version_id
+         AND NOT EXISTS (
+           SELECT 1 FROM reviews assignment_successor
+            WHERE assignment_successor.supersedes_review_id = assignment_head.id
+         )
+       LIMIT 1
+    )
+    ELSE approved_source.id
+  END
+  FROM reviews approved_source
+ WHERE approved_source.id = ${currentOrPreviousApprovedSourceReviewSql}
+ LIMIT 1)`;
+
+function lastApprovedEntityIdsSql(entityType: "candidacy" | "constituency" | "topic") {
+  const effectiveReviewSql = entityType === "candidacy"
+    ? currentOrPreviousEffectiveCandidateReviewSql
+    : currentOrPreviousApprovedSourceReviewSql;
+  return `COALESCE((
+    SELECT json_group_array(entity_id)
+      FROM (
+        SELECT frozen.entity_id
+          FROM source_item_version_entities frozen
+         WHERE frozen.source_item_version_id = items.latest_version_id
+           AND frozen.review_id = ${effectiveReviewSql}
+           AND frozen.entity_type = '${entityType}'
+           AND frozen.confirmation_state = 'confirmed'
+         ORDER BY frozen.entity_id
+      )
+  ), '[]')`;
+}
+
+const lastApprovedAssignmentCandidateIdsSql = `COALESCE((
+  SELECT json_group_array(entity_id)
+    FROM (
+      SELECT frozen.entity_id
+        FROM source_item_version_entities frozen
+       WHERE frozen.source_item_version_id = items.latest_version_id
+         AND frozen.review_id = (
+           SELECT CASE
+             WHEN assignment_review.decision = 'approved' THEN assignment_review.id
+             ELSE assignment_review.supersedes_review_id
+           END
+             FROM reviews assignment_review
+            WHERE assignment_review.target_type = 'source-item-version-assignment'
+              AND assignment_review.target_id = items.latest_version_id
+              AND NOT EXISTS (
+                SELECT 1 FROM reviews assignment_successor
+                 WHERE assignment_successor.supersedes_review_id = assignment_review.id
+              )
+            LIMIT 1
+         )
+         AND frozen.entity_type = 'candidacy'
+         AND frozen.confirmation_state = 'confirmed'
+       ORDER BY frozen.entity_id
+    )
+), '[]')`;
+
+export async function getEvidenceDashboardForDatabase(
+  db: D1Database,
+): Promise<EvidenceDashboard> {
   await ensureEvidenceTriggers(db);
-  const [sourceRows, runRows, reviewRows, candidateRows, transcriptRows, countRow, auditRow] =
+  await backfillCandidateProfileBasisHashes(db);
+  const [
+    sourceRows,
+    runRows,
+    reviewRows,
+    candidateRows,
+    transcriptRows,
+    constituencyRows,
+    topicRows,
+    countRow,
+    auditRow,
+  ] =
     await Promise.all([
       db
         .prepare(
@@ -353,6 +551,103 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
                     items.latest_snapshot_id, items.latest_version_id,
                     sources.id AS source_id, sources.name AS source_name,
                     sources.feed_type AS source_feed_type,
+                    CASE items.review_state
+                      WHEN 'approved' THEN 'approved'
+                      WHEN 'rejected' THEN 'rejected'
+                      ELSE 'pending'
+                    END AS editorial_state,
+                    (SELECT COUNT(*) FROM reviews decision_history
+                      WHERE decision_history.target_type = 'source-item-version'
+                        AND decision_history.target_id = items.latest_version_id)
+                      AS decision_count,
+                    (SELECT COUNT(*) FROM reviews assignment_history
+                      WHERE assignment_history.target_type = 'source-item-version-assignment'
+                        AND assignment_history.target_id = items.latest_version_id)
+                      AS assignment_decision_count,
+                    (SELECT current_review.id FROM reviews current_review
+                      WHERE current_review.target_type = 'source-item-version'
+                        AND current_review.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews successor
+                           WHERE successor.supersedes_review_id = current_review.id
+                        ) LIMIT 1) AS current_review_id,
+                    (SELECT current_review.decision FROM reviews current_review
+                      WHERE current_review.target_type = 'source-item-version'
+                        AND current_review.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews successor
+                           WHERE successor.supersedes_review_id = current_review.id
+                        ) LIMIT 1) AS current_review_decision,
+                    (SELECT current_review.rationale FROM reviews current_review
+                      WHERE current_review.target_type = 'source-item-version'
+                        AND current_review.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews successor
+                           WHERE successor.supersedes_review_id = current_review.id
+                        ) LIMIT 1) AS current_review_rationale,
+                    (SELECT current_review.reviewer_id FROM reviews current_review
+                      WHERE current_review.target_type = 'source-item-version'
+                        AND current_review.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews successor
+                           WHERE successor.supersedes_review_id = current_review.id
+                        ) LIMIT 1) AS current_reviewer_id,
+                    (SELECT current_review.created_at FROM reviews current_review
+                      WHERE current_review.target_type = 'source-item-version'
+                        AND current_review.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews successor
+                           WHERE successor.supersedes_review_id = current_review.id
+                        ) LIMIT 1) AS current_review_created_at,
+                    (SELECT current_review.supersedes_review_id FROM reviews current_review
+                      WHERE current_review.target_type = 'source-item-version'
+                        AND current_review.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews successor
+                           WHERE successor.supersedes_review_id = current_review.id
+                        ) LIMIT 1) AS current_supersedes_review_id,
+                    (SELECT current_assignment.id FROM reviews current_assignment
+                      WHERE current_assignment.target_type = 'source-item-version-assignment'
+                        AND current_assignment.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews assignment_successor
+                           WHERE assignment_successor.supersedes_review_id = current_assignment.id
+                        ) LIMIT 1) AS current_assignment_review_id,
+                    (SELECT current_assignment.decision FROM reviews current_assignment
+                      WHERE current_assignment.target_type = 'source-item-version-assignment'
+                        AND current_assignment.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews assignment_successor
+                           WHERE assignment_successor.supersedes_review_id = current_assignment.id
+                        ) LIMIT 1) AS current_assignment_review_decision,
+                    (SELECT current_assignment.rationale FROM reviews current_assignment
+                      WHERE current_assignment.target_type = 'source-item-version-assignment'
+                        AND current_assignment.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews assignment_successor
+                           WHERE assignment_successor.supersedes_review_id = current_assignment.id
+                        ) LIMIT 1) AS current_assignment_review_rationale,
+                    (SELECT current_assignment.reviewer_id FROM reviews current_assignment
+                      WHERE current_assignment.target_type = 'source-item-version-assignment'
+                        AND current_assignment.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews assignment_successor
+                           WHERE assignment_successor.supersedes_review_id = current_assignment.id
+                        ) LIMIT 1) AS current_assignment_reviewer_id,
+                    (SELECT current_assignment.created_at FROM reviews current_assignment
+                      WHERE current_assignment.target_type = 'source-item-version-assignment'
+                        AND current_assignment.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews assignment_successor
+                           WHERE assignment_successor.supersedes_review_id = current_assignment.id
+                        ) LIMIT 1) AS current_assignment_review_created_at,
+                    (SELECT current_assignment.supersedes_review_id FROM reviews current_assignment
+                      WHERE current_assignment.target_type = 'source-item-version-assignment'
+                        AND current_assignment.target_id = items.latest_version_id
+                        AND NOT EXISTS (
+                          SELECT 1 FROM reviews assignment_successor
+                           WHERE assignment_successor.supersedes_review_id = current_assignment.id
+                        ) LIMIT 1) AS current_assignment_supersedes_review_id,
                     (SELECT frozen.canonical_reason_json
                        FROM source_item_version_collection_assessments frozen
                       WHERE frozen.source_item_version_id = items.latest_version_id)
@@ -375,6 +670,11 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
                          WHERE source_review.target_type = 'source-item-version'
                            AND source_review.target_id = items.latest_version_id
                            AND source_review.decision = 'approved'
+                           AND source_review.supersedes_review_id IS NULL
+                           AND NOT EXISTS (
+                             SELECT 1 FROM reviews source_successor
+                              WHERE source_successor.supersedes_review_id = source_review.id
+                           )
                       )
                       AND EXISTS (
                         SELECT 1
@@ -396,6 +696,52 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
                            AND frozen.entity_type = 'candidacy'
                       )
                       THEN 1 ELSE 0 END AS association_review_only,
+                    CASE WHEN items.review_state = 'approved'
+                      AND items.publication_state = 'published'
+                      AND EXISTS (
+                        SELECT 1 FROM reviews source_review
+                         WHERE source_review.target_type = 'source-item-version'
+                           AND source_review.target_id = items.latest_version_id
+                           AND source_review.decision = 'approved'
+                           AND source_review.supersedes_review_id IS NULL
+                           AND NOT EXISTS (
+                             SELECT 1 FROM reviews source_successor
+                              WHERE source_successor.supersedes_review_id = source_review.id
+                           )
+                      )
+                      AND EXISTS (
+                        SELECT 1
+                          FROM item_entities candidate_match
+                          JOIN candidacies current_candidate
+                            ON current_candidate.id = candidate_match.entity_id
+                           AND current_candidate.declaration_status != 'source-removed'
+                         WHERE candidate_match.item_id = items.id
+                           AND candidate_match.entity_type = 'candidacy'
+                      )
+                      AND (
+                        EXISTS (
+                          SELECT 1 FROM reviews assignment_review
+                           WHERE assignment_review.target_type = 'source-item-version-assignment'
+                             AND assignment_review.target_id = items.latest_version_id
+                             AND NOT EXISTS (
+                               SELECT 1 FROM reviews assignment_successor
+                                WHERE assignment_successor.supersedes_review_id = assignment_review.id
+                             )
+                        )
+                        OR (
+                          NOT EXISTS (
+                            SELECT 1 FROM reviews assignment_review
+                             WHERE assignment_review.target_type = 'source-item-version-assignment'
+                               AND assignment_review.target_id = items.latest_version_id
+                          )
+                          AND NOT EXISTS (
+                            SELECT 1 FROM source_item_version_entities frozen
+                             WHERE frozen.source_item_version_id = items.latest_version_id
+                               AND frozen.entity_type = 'candidacy'
+                          )
+                        )
+                      )
+                      THEN 1 ELSE 0 END AS assignment_review_available,
                     COALESCE((
                       SELECT json_group_array(json_object(
                         'candidacyId', candidate_matches.entity_id,
@@ -439,6 +785,14 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
                       WHERE constituency_matches.item_id = items.id
                         AND constituency_matches.entity_type = 'constituency'
                     ), '[]') AS constituency_associations_json,
+                    ${lastApprovedEntityIdsSql("candidacy")}
+                      AS last_approved_candidate_ids_json,
+                    ${lastApprovedAssignmentCandidateIdsSql}
+                      AS last_approved_assignment_candidate_ids_json,
+                    ${lastApprovedEntityIdsSql("constituency")}
+                      AS last_approved_constituency_ids_json,
+                    ${lastApprovedEntityIdsSql("topic")}
+                      AS last_approved_topic_ids_json,
                     (SELECT GROUP_CONCAT(candidate_ids.entity_id)
                        FROM item_entities candidate_ids
                       WHERE candidate_ids.item_id = items.id
@@ -446,10 +800,12 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
                     ${collectionRouteExpression} AS collection_route_hint
              FROM source_items items
              JOIN sources ON sources.id = items.source_id
-             WHERE ${pendingReviewPredicate}
+             WHERE items.latest_version_id IS NOT NULL
            )
            SELECT * FROM review_candidates
-            ORDER BY CASE collection_route_hint
+            ORDER BY CASE editorial_state
+              WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+              CASE collection_route_hint
               WHEN 'evidence-review' THEN 0
               WHEN 'context-monitoring' THEN 1
               ELSE 2 END,
@@ -461,7 +817,38 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
           `SELECT profiles.candidacy_id, profiles.slug, profiles.profile_url,
                   profiles.completeness_state, profiles.review_state,
                   profiles.publication_state, profiles.last_profile_checked_at,
-                  people.full_name, constituencies.name AS constituency_name,
+                  profiles.current_basis_hash,
+                  candidacies.affiliation, candidacies.declaration_status,
+                  candidacies.constituency_id,
+                  canonical_constituency.name AS constituency_name,
+                  profiles.observed_constituency_id,
+                  observed_constituency.name AS observed_constituency_name,
+                  directory_observation.payload_hash AS directory_payload_hash,
+                  json_extract(directory_observation.payload, '$.candidate.profileUrl')
+                    AS identity_source_url,
+                  COALESCE(
+                    (SELECT versions.id FROM source_item_versions versions
+                      WHERE versions.source_item_id = directory_observation.source_item_id
+                        AND versions.snapshot_id = directory_observation.snapshot_id
+                        AND versions.payload_hash = directory_observation.payload_hash
+                        AND versions.parser_version = 'candidate-directory-v1'
+                      ORDER BY versions.observed_at DESC, versions.created_at DESC LIMIT 1),
+                    (SELECT versions.id FROM source_item_versions versions
+                      WHERE versions.source_item_id = directory_observation.source_item_id
+                        AND versions.payload_hash = directory_observation.payload_hash
+                        AND versions.parser_version = 'candidate-directory-v1'
+                        AND versions.observed_at <= directory_observation.observed_at
+                      ORDER BY versions.observed_at DESC, versions.created_at DESC LIMIT 1)
+                  ) AS directory_version_id,
+                  profile_review.id AS current_profile_review_id,
+                  profile_review.decision AS current_profile_review_decision,
+                  profile_review.rationale AS current_profile_review_rationale,
+                  profile_review.created_at AS current_profile_review_created_at,
+                  (SELECT COUNT(*) FROM reviews profile_decision
+                    WHERE profile_decision.target_type = 'candidate-profile-version'
+                      AND profile_decision.target_id = profiles.current_basis_hash)
+                    AS profile_decision_count,
+                  people.full_name,
                   COALESCE(intelligence.analysis_state, 'missing') AS intelligence_state,
                   COALESCE(json_array_length(json_extract(profile_observation.payload, '$.biographyParagraphs')), 0)
                     AS biography_paragraph_count,
@@ -505,10 +892,29 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
                       AND review.target_type IN ('source-item-version', 'source-item-version-assignment')
                       AND review.target_id = versions.id
                       AND review.decision = 'approved'
+                      AND NOT EXISTS (
+                        SELECT 1 FROM reviews successor
+                         WHERE successor.supersedes_review_id = review.id
+                      )
+                      AND (
+                        review.target_type = 'source-item-version'
+                        OR EXISTS (
+                          SELECT 1 FROM reviews source_review
+                           WHERE source_review.target_type = 'source-item-version'
+                             AND source_review.target_id = versions.id
+                             AND source_review.decision = 'approved'
+                             AND source_review.supersedes_review_id IS NULL
+                             AND NOT EXISTS (
+                               SELECT 1 FROM reviews source_successor
+                                WHERE source_successor.supersedes_review_id = source_review.id
+                             )
+                        )
+                      )
                     WHERE frozen.entity_type = 'candidacy'
                       AND frozen.entity_id = profiles.candidacy_id
                       AND frozen.confirmation_state = 'confirmed'
-                      AND items.review_state = 'approved') AS dossier_evidence_count,
+                      AND items.review_state = 'approved'
+                      AND items.publication_state = 'published') AS dossier_evidence_count,
                   (SELECT COUNT(*) FROM candidate_media_assets media
                    WHERE media.candidacy_id = profiles.candidacy_id
                      AND media.media_kind = 'portrait'
@@ -521,9 +927,28 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
            FROM candidate_profiles profiles
            JOIN candidacies ON candidacies.id = profiles.candidacy_id
            JOIN people ON people.id = candidacies.person_id
-           JOIN constituencies ON constituencies.id = profiles.observed_constituency_id
+           JOIN constituencies canonical_constituency
+             ON canonical_constituency.id = candidacies.constituency_id
+           JOIN constituencies observed_constituency
+             ON observed_constituency.id = profiles.observed_constituency_id
            LEFT JOIN candidate_intelligence_heads intelligence
              ON intelligence.candidacy_id = profiles.candidacy_id
+           LEFT JOIN reviews profile_review
+             ON profile_review.target_type = 'candidate-profile-version'
+            AND profile_review.target_id = profiles.current_basis_hash
+            AND NOT EXISTS (
+              SELECT 1 FROM reviews profile_successor
+               WHERE profile_successor.supersedes_review_id = profile_review.id
+            )
+            AND EXISTS (
+              SELECT 1 FROM audit_events profile_audit
+               WHERE profile_audit.action = 'candidate-profile.reviewed'
+                 AND profile_audit.entity_type = 'candidate-profile'
+                 AND profile_audit.entity_id = profiles.candidacy_id
+                 AND json_extract(profile_audit.payload, '$.reviewId') = profile_review.id
+                 AND json_extract(profile_audit.payload, '$.basisHash') = profiles.current_basis_hash
+                 AND json_extract(profile_audit.payload, '$.decision') = profile_review.decision
+            )
            LEFT JOIN candidate_profile_observations profile_observation
              ON profile_observation.id = profiles.current_profile_observation_id
            LEFT JOIN candidate_profile_observations directory_observation
@@ -545,7 +970,7 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
                LIMIT 1
              )
            WHERE candidacies.declaration_status != 'source-removed'
-           ORDER BY constituencies.name, people.sort_name`,
+           ORDER BY canonical_constituency.name, people.sort_name`,
         )
         .all<CandidateRegistryStatus>(),
       db
@@ -579,6 +1004,14 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
         )
         .all<TranscriptQueueItem>(),
       db
+        .prepare("SELECT id, name AS label FROM constituencies ORDER BY name COLLATE NOCASE, id")
+        .all<EvidenceRoutingOption>(),
+      db
+        .prepare(
+          "SELECT id, name AS label FROM policy_topics WHERE active = 1 ORDER BY name COLLATE NOCASE, id",
+        )
+        .all<EvidenceRoutingOption>(),
+      db
         .prepare(
           `SELECT
             (SELECT COUNT(*) FROM sources WHERE active = 1) AS sources,
@@ -587,6 +1020,32 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
             (SELECT COUNT(*) FROM source_items items
              JOIN sources ON sources.id = items.source_id
              WHERE ${pendingReviewPredicate}) AS pending_review,
+            (SELECT COUNT(*) FROM source_items items
+             WHERE items.review_state = 'approved'
+               AND items.publication_state = 'published'
+               AND EXISTS (
+                 SELECT 1 FROM reviews current_review
+                  WHERE current_review.target_type = 'source-item-version'
+                    AND current_review.target_id = items.latest_version_id
+                    AND current_review.decision = 'approved'
+                    AND NOT EXISTS (
+                      SELECT 1 FROM reviews successor
+                       WHERE successor.supersedes_review_id = current_review.id
+                    )
+               )) AS approved_evidence,
+            (SELECT COUNT(*) FROM source_items items
+             WHERE items.review_state = 'rejected'
+               AND items.publication_state = 'withheld'
+               AND EXISTS (
+                 SELECT 1 FROM reviews current_review
+                  WHERE current_review.target_type = 'source-item-version'
+                    AND current_review.target_id = items.latest_version_id
+                    AND current_review.decision = 'rejected'
+                    AND NOT EXISTS (
+                      SELECT 1 FROM reviews successor
+                       WHERE successor.supersedes_review_id = current_review.id
+                    )
+               )) AS rejected_evidence,
             (SELECT COUNT(*) FROM source_items items
              JOIN sources ON sources.id = items.source_id
              WHERE ${pendingReviewPredicate}
@@ -611,26 +1070,14 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
                AND candidacies.declaration_status != 'source-removed') AS parsed_candidate_profiles,
             (SELECT COUNT(*) FROM candidate_profiles profiles
              JOIN candidacies ON candidacies.id = profiles.candidacy_id
-             WHERE profiles.review_state IN ('unreviewed', 'needs-update')
+             WHERE NOT ${approvedCandidateProfileBasisSql("profiles")}
                AND candidacies.declaration_status != 'source-removed') AS pending_candidate_review,
             (SELECT COUNT(*) FROM candidate_media_assets media
              JOIN candidacies ON candidacies.id = media.candidacy_id
              WHERE media.media_kind = 'portrait'
                AND media.retention_outcome != 'removed'
                AND candidacies.declaration_status != 'source-removed') AS candidate_portraits,
-            (SELECT COUNT(*) FROM candidate_media_assets media
-             JOIN candidacies ON candidacies.id = media.candidacy_id
-             WHERE media.media_kind = 'portrait'
-               AND candidacies.declaration_status != 'source-removed'
-               AND media.publication_state = 'published'
-               AND media.review_state = 'approved'
-               AND media.rights_state IN ('candidate-permission', 'redistributable')
-               AND media.retention_outcome = 'stored-publishable'
-               AND media.content_snapshot_id IS NOT NULL
-               AND media.content_hash IS NOT NULL
-               AND media.storage_key IS NOT NULL
-               AND media.content_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif'))
-              AS publishable_candidate_portraits,
+            0 AS publishable_candidate_portraits,
             (SELECT COUNT(*) FROM candidate_links) AS candidate_links,
             (SELECT COUNT(*) FROM candidate_documents) AS candidate_documents,
             (SELECT COUNT(*) FROM transcript_jobs WHERE processing_state != 'removed') AS transcript_sources,
@@ -657,12 +1104,32 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
   const reviewItems = await Promise.all(reviewRows.results.map(async (item) => {
     const {
       candidate_associations_json: candidateAssociationsJson,
+      assignment_decision_count: assignmentDecisionCount,
+      assignment_review_available: assignmentReviewAvailable,
       canonical_reason_hash: canonicalReasonHash,
       canonical_reason_json: canonicalReasonJson,
       collection_route: collectionRoute,
       collection_route_hint: _collectionRouteHint,
       collection_ruleset_id: collectionRulesetId,
       constituency_associations_json: constituencyAssociationsJson,
+      current_review_created_at: currentReviewCreatedAt,
+      current_review_decision: currentReviewDecision,
+      current_review_id: currentReviewId,
+      current_review_rationale: currentReviewRationale,
+      current_reviewer_id: currentReviewerId,
+      current_supersedes_review_id: currentSupersedesReviewId,
+      current_assignment_review_created_at: currentAssignmentReviewCreatedAt,
+      current_assignment_review_decision: currentAssignmentReviewDecision,
+      current_assignment_review_id: currentAssignmentReviewId,
+      current_assignment_review_rationale: currentAssignmentReviewRationale,
+      current_assignment_reviewer_id: currentAssignmentReviewerId,
+      current_assignment_supersedes_review_id: currentAssignmentSupersedesReviewId,
+      decision_count: decisionCount,
+      editorial_state: editorialState,
+      last_approved_assignment_candidate_ids_json: lastApprovedAssignmentCandidateIdsJson,
+      last_approved_candidate_ids_json: lastApprovedCandidateIdsJson,
+      last_approved_constituency_ids_json: lastApprovedConstituencyIdsJson,
+      last_approved_topic_ids_json: lastApprovedTopicIdsJson,
       topic_associations_json: topicAssociationsJson,
       ...reviewItem
     } = item;
@@ -693,8 +1160,19 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
       title: reviewItem.title,
       topics: topicAssociations,
     });
+    const normalizedEditorialState: EvidenceReviewItem["editorialState"] =
+      editorialState === "approved" || editorialState === "rejected"
+        ? editorialState
+        : "pending";
+    const normalizedAssignmentState: EvidenceReviewItem["assignmentState"] =
+      currentAssignmentReviewDecision === "approved" || currentAssignmentReviewDecision === "rejected"
+        ? currentAssignmentReviewDecision
+        : reviewItem.association_review_only ? "pending" : "not-applicable";
     return {
       ...reviewItem,
+      assignmentDecisionCount,
+      assignmentReviewAvailable: Boolean(assignmentReviewAvailable),
+      assignmentState: normalizedAssignmentState,
       candidateAssociations,
       collectionReason,
       collectionReasonHash: frozenCollectionReason ? canonicalReasonHash : null,
@@ -703,6 +1181,40 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
         ? "frozen" as const
         : "not-yet-frozen" as const,
       constituencyAssociations,
+      currentAssignmentDecision: currentAssignmentReviewId
+        && (currentAssignmentReviewDecision === "approved" || currentAssignmentReviewDecision === "rejected")
+        && currentAssignmentReviewRationale
+        && currentAssignmentReviewerId
+        && currentAssignmentReviewCreatedAt
+        ? {
+            createdAt: currentAssignmentReviewCreatedAt,
+            decision: currentAssignmentReviewDecision as "approved" | "rejected",
+            id: currentAssignmentReviewId,
+            rationale: currentAssignmentReviewRationale,
+            reviewerId: currentAssignmentReviewerId,
+            supersedesReviewId: currentAssignmentSupersedesReviewId,
+          }
+        : null,
+      currentDecision: currentReviewId
+        && (currentReviewDecision === "approved" || currentReviewDecision === "rejected")
+        && currentReviewRationale
+        && currentReviewerId
+        && currentReviewCreatedAt
+        ? {
+            createdAt: currentReviewCreatedAt,
+            decision: currentReviewDecision as "approved" | "rejected",
+            id: currentReviewId,
+            rationale: currentReviewRationale,
+            reviewerId: currentReviewerId,
+            supersedesReviewId: currentSupersedesReviewId,
+          }
+        : null,
+      decisionCount,
+      editorialState: normalizedEditorialState,
+      lastApprovedAssignmentCandidateIds: parseIdArray(lastApprovedAssignmentCandidateIdsJson),
+      lastApprovedCandidateIds: parseIdArray(lastApprovedCandidateIdsJson),
+      lastApprovedConstituencyIds: parseIdArray(lastApprovedConstituencyIdsJson),
+      lastApprovedTopicIds: parseIdArray(lastApprovedTopicIdsJson),
       candidateSuggestionFingerprint: await fingerprintCandidateSuggestions(
         candidateAssociations.map((candidate) => ({
           candidacyId: candidate.candidacyId,
@@ -711,6 +1223,16 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
           mentionText: candidate.mentionText,
         })),
       ),
+      collectionScopeSuggestionFingerprint: await fingerprintScopeSuggestions([
+        ...constituencyAssociations.map((association) => ({
+          ...association,
+          entityType: "constituency" as const,
+        })),
+        ...topicAssociations.map((association) => ({
+          ...association,
+          entityType: "topic" as const,
+        })),
+      ]),
       topicAssociations,
     };
   }));
@@ -725,6 +1247,7 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
       candidatePortraits: countRow?.candidate_portraits ?? 0,
       candidates: countRow?.candidates ?? 0,
       claims: countRow?.claims ?? 0,
+      approvedEvidence: countRow?.approved_evidence ?? 0,
       pendingCandidateReview: countRow?.pending_candidate_review ?? 0,
       pendingBroadMonitoring: countRow?.pending_broad_monitoring ?? 0,
       pendingContextMonitoring: countRow?.pending_context_monitoring ?? 0,
@@ -736,6 +1259,7 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
       pendingReview: countRow?.pending_review ?? 0,
       parsedCandidateProfiles: countRow?.parsed_candidate_profiles ?? 0,
       publishableCandidatePortraits: countRow?.publishable_candidate_portraits ?? 0,
+      rejectedEvidence: countRow?.rejected_evidence ?? 0,
       reviews: countRow?.reviews ?? 0,
       snapshots: countRow?.snapshots ?? 0,
       sourceItems: countRow?.source_items ?? 0,
@@ -746,9 +1270,18 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
     },
     recentRuns: runRows.results,
     reviewItems,
+    routingOptions: {
+      constituencies: constituencyRows.results,
+      topics: topicRows.results,
+    },
     sources: sourceRows.results,
     transcriptQueue: transcriptRows.results,
   };
+}
+
+export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
+  const { getEvidenceBindings } = await import("../../../db/index.ts");
+  return getEvidenceDashboardForDatabase(getEvidenceBindings().DB);
 }
 
 export async function getEvidenceDashboardSafe() {

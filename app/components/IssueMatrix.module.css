@@ -9,6 +9,23 @@
   padding: 11px 14px;
 }
 
+.scrollInstructions {
+  color: #435e62;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 0 9px;
+}
+
+.scrollRegion {
+  border-radius: 6px;
+  outline: 3px solid transparent;
+  outline-offset: 3px;
+}
+
+.scrollRegion:focus-visible {
+  outline-color: #0d6970;
+}
+
 .candidateConstituency {
   color: rgba(255, 255, 255, .62);
   display: block;
@@ -18,4 +35,15 @@
   letter-spacing: .03em;
   margin-top: 4px;
   padding-left: 37px;
+}
+
+.empty {
+  background: #fffdf7;
+  border: 1px solid rgba(18, 50, 56, .16);
+  border-radius: 14px;
+  color: #526a6d;
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 24px;
+  text-align: center;
 }

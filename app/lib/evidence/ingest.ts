@@ -15,9 +15,12 @@ import {
 } from "./candidate-html";
 import { candidateDirectoryStatesSql } from "./candidate-directory-sql";
 import {
+  backfillCandidateProfileBasisHashes,
+  fingerprintCandidateProfileBasis,
+} from "./candidate-profile-basis";
+import {
   appendLegacyCollectionAssessment,
   hasCollectionAssessment,
-  insertCollectionAssessmentStatement,
   legacyCollectionAssessmentBacklogSql,
   prepareCollectionAssessment,
   shouldAppendLegacyCollectionAssessment,
@@ -108,7 +111,11 @@ type SnapshotRow = {
 };
 
 type CandidateDirectoryState = {
+  affiliation: string;
   candidacy_id: string;
+  constituency_id: string;
+  constituency_name: string;
+  current_basis_hash: string | null;
   current_directory_version_id: string | null;
   current_profile_observation_id: string | null;
   current_profile_payload: string | null;
@@ -116,7 +123,11 @@ type CandidateDirectoryState = {
   current_profile_snapshot_id: string | null;
   declaration_status: string;
   directory_payload_hash: string;
+  full_name: string;
+  people_profile_state: string;
+  person_id: string;
   slug: string;
+  verification_state: string;
 };
 
 type CandidateProfileDue = {
@@ -774,8 +785,13 @@ async function processFeedItem(input: {
         },
       },
       buildStatements,
-      (event) => [insertCollectionAssessmentStatement(db, collectionAssessment, event)],
     );
+    await appendLegacyCollectionAssessment({
+      actor: { id: "evidence-monitor", type: "system" },
+      assessment: collectionAssessment,
+      db,
+      sourceItemId: resolvedItemId,
+    });
   } else {
     await db.batch(buildStatements());
     if (shouldAppendLegacyCollectionAssessment(
@@ -1313,6 +1329,31 @@ async function buildCandidateDirectoryStatements(input: {
       outcome === "unchanged" && profileState?.current_directory_version_id
         ? profileState.current_directory_version_id
         : await deterministicId("itemversion", itemId, payloadHash, input.snapshotId);
+    const basisFullName = profileState && profileState.people_profile_state !== "draft"
+      ? profileState.full_name
+      : entry.name;
+    const basisConstituencyId = profileState?.verification_state === "unverified"
+      ? constituencyId
+      : profileState?.constituency_id ?? constituencyId;
+    const basisDeclarationStatus = profileState?.verification_state === "unverified"
+      ? "prospective"
+      : profileState?.declaration_status ?? "prospective";
+    const currentBasisHash = await fingerprintCandidateProfileBasis({
+      affiliation: profileState?.affiliation ?? "Unconfirmed",
+      candidacyId,
+      constituencyId: basisConstituencyId,
+      constituencyName: profileState?.verification_state === "unverified"
+        ? entry.constituencyName
+        : profileState?.constituency_name ?? entry.constituencyName,
+      declarationStatus: basisDeclarationStatus,
+      directoryPayloadHash: payloadHash,
+      directoryVersionId: versionId,
+      fullName: basisFullName,
+      observedConstituencyId: constituencyId,
+      personId: profileState?.person_id ?? personId,
+      profileUrlHash,
+      slug: entry.slug,
+    });
     const collectionReason = projectCollectionReason({
       candidates: [{
         confidence: 1,
@@ -1471,25 +1512,29 @@ async function buildCandidateDirectoryStatements(input: {
         .prepare(
           `INSERT INTO candidate_profiles (
             candidacy_id, slug, profile_url, profile_url_hash, observed_constituency_id,
-            current_directory_observation_id, completeness_state, last_directory_seen_at,
+            current_directory_observation_id, current_basis_hash,
+            completeness_state, last_directory_seen_at,
             next_profile_check_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, 'directory-only', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'directory-only', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           ON CONFLICT(candidacy_id) DO UPDATE SET
             profile_url = excluded.profile_url,
             profile_url_hash = excluded.profile_url_hash,
             observed_constituency_id = excluded.observed_constituency_id,
             current_directory_observation_id = excluded.current_directory_observation_id,
+            current_basis_hash = excluded.current_basis_hash,
             last_directory_seen_at = excluded.last_directory_seen_at,
             next_profile_check_at = CASE
               WHEN candidate_profiles.next_profile_check_at IS NULL THEN CURRENT_TIMESTAMP
               ELSE candidate_profiles.next_profile_check_at
             END,
             publication_state = CASE
-              WHEN ? = 1 AND candidate_profiles.review_state = 'approved' THEN 'withheld'
+              WHEN candidate_profiles.current_basis_hash IS NOT excluded.current_basis_hash
+                AND candidate_profiles.publication_state = 'published' THEN 'withheld'
               ELSE candidate_profiles.publication_state
             END,
             review_state = CASE
-              WHEN ? = 1 AND candidate_profiles.review_state = 'approved' THEN 'needs-update'
+              WHEN candidate_profiles.current_basis_hash IS NOT excluded.current_basis_hash
+                AND candidate_profiles.review_state IN ('approved', 'rejected') THEN 'needs-update'
               ELSE candidate_profiles.review_state
             END,
             updated_at = CURRENT_TIMESTAMP`,
@@ -1501,9 +1546,8 @@ async function buildCandidateDirectoryStatements(input: {
           profileUrlHash,
           constituencyId,
           observationId,
+          currentBasisHash,
           observedAt,
-          outcome === "changed" ? 1 : 0,
-          outcome === "changed" ? 1 : 0,
         ),
       await candidateMediaStatement({
         candidacyId,
@@ -1561,7 +1605,8 @@ async function buildCandidateDirectoryStatements(input: {
           publication_state = CASE
             WHEN publication_state = 'published' THEN 'withheld' ELSE publication_state END,
           review_state = CASE
-            WHEN review_state = 'approved' THEN 'needs-update' ELSE review_state END,
+            WHEN review_state IN ('approved', 'rejected') THEN 'needs-update' ELSE review_state END,
+          current_basis_hash = NULL,
           next_profile_check_at = NULL,
           updated_at = CURRENT_TIMESTAMP
          WHERE last_directory_seen_at != ?`,
@@ -1833,14 +1878,6 @@ async function processCandidateProfile(input: {
         `UPDATE candidate_profiles SET
           current_profile_observation_id = ?, completeness_state = 'profile-parsed',
           last_profile_checked_at = ?, next_profile_check_at = ?,
-          publication_state = CASE
-            WHEN ? = 1 AND review_state = 'approved' THEN 'withheld'
-            ELSE publication_state
-          END,
-          review_state = CASE
-            WHEN ? = 1 AND review_state = 'approved' THEN 'needs-update'
-            ELSE review_state
-          END,
           updated_at = CURRENT_TIMESTAMP
          WHERE candidacy_id = ?`,
       )
@@ -1848,8 +1885,6 @@ async function processCandidateProfile(input: {
         observationId,
         observedAt,
         plusMinutes(new Date(observedAt), 1_440),
-        profileChanged ? 1 : 0,
-        profileChanged ? 1 : 0,
         input.due.candidacy_id,
       ),
   ];
@@ -2002,14 +2037,14 @@ async function processCandidateProfile(input: {
       },
     },
     () => statements,
-    profileChanged
-      ? (event) => [insertCollectionAssessmentStatement(db, collectionAssessment, event)]
-      : undefined,
   );
-  if (shouldAppendLegacyCollectionAssessment(
-    profileChanged,
-    collectionAssessmentAlreadyFrozen,
-  )) {
+  if (
+    profileChanged
+    || shouldAppendLegacyCollectionAssessment(
+      profileChanged,
+      collectionAssessmentAlreadyFrozen,
+    )
+  ) {
     await appendLegacyCollectionAssessment({
       actor: { id: "evidence-monitor", type: "system" },
       assessment: collectionAssessment,
@@ -2213,10 +2248,23 @@ async function runCandidateDirectorySource(
           },
         },
         () => directory.statements,
-        (event) => directory.assessments.map((assessment) =>
-          insertCollectionAssessmentStatement(db, assessment, event)
-        ),
       );
+      for (const assessment of directory.assessments) {
+        const sourceItem = await db.prepare(
+          "SELECT source_item_id FROM source_item_versions WHERE id = ?",
+        ).bind(assessment.sourceItemVersionId).first<{ source_item_id: string }>();
+        if (!sourceItem) {
+          throw new Error(
+            `The candidate-directory assessment target ${assessment.sourceItemVersionId} was not stored.`,
+          );
+        }
+        await appendLegacyCollectionAssessment({
+          actor: command.actor,
+          assessment,
+          db,
+          sourceItemId: sourceItem.source_item_id,
+        });
+      }
       for (const legacy of directory.legacyAssessments) {
         await appendLegacyCollectionAssessment({
           actor: command.actor,
@@ -2729,6 +2777,7 @@ export async function runEvidenceIngestion(
 ): Promise<IngestionResult> {
   await ensureEvidenceTriggers(bindings.DB);
   await seedEvidenceReferenceData(bindings.DB);
+  await backfillCandidateProfileBasisHashes(bindings.DB);
   await backfillLegacyCollectionAssessments(bindings.DB, command.actor);
   const allowedSourceIds = new Set(command.sourceIds ?? monitoredSources.map((source) => source.id));
   const sourceOrder = new Map(command.sourceIds?.map((sourceId, index) => [sourceId, index]) ?? []);

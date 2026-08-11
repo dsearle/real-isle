@@ -68,11 +68,29 @@ test("candidate directory state lookup prefers the matching snapshot without a c
     database.exec(`
       CREATE TABLE candidacies (
         id TEXT PRIMARY KEY,
-        declaration_status TEXT NOT NULL
+        person_id TEXT NOT NULL,
+        constituency_id TEXT NOT NULL,
+        affiliation TEXT NOT NULL,
+        declaration_status TEXT NOT NULL,
+        verification_state TEXT NOT NULL
+      );
+      CREATE TABLE people (
+        id TEXT PRIMARY KEY,
+        full_name TEXT NOT NULL,
+        profile_state TEXT NOT NULL
+      );
+      CREATE TABLE policy_topics (
+        id TEXT PRIMARY KEY,
+        active INTEGER NOT NULL
+      );
+      CREATE TABLE constituencies (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL
       );
       CREATE TABLE candidate_profiles (
         candidacy_id TEXT PRIMARY KEY,
         slug TEXT NOT NULL,
+        current_basis_hash TEXT,
         current_directory_observation_id TEXT NOT NULL,
         current_profile_observation_id TEXT
       );
@@ -94,8 +112,15 @@ test("candidate directory state lookup prefers the matching snapshot without a c
         created_at TEXT NOT NULL
       );
 
-      INSERT INTO candidacies (id, declaration_status)
-      VALUES ('candidate-a', 'prospective'), ('candidate-b', 'prospective');
+      INSERT INTO people (id, full_name, profile_state)
+      VALUES ('person-a', 'Candidate A', 'draft'), ('person-b', 'Candidate B', 'draft');
+      INSERT INTO constituencies (id, name)
+      VALUES ('constituency-a', 'Constituency A'), ('constituency-b', 'Constituency B');
+      INSERT INTO candidacies (
+        id, person_id, constituency_id, affiliation, declaration_status, verification_state
+      ) VALUES
+        ('candidate-a', 'person-a', 'constituency-a', 'Unconfirmed', 'prospective', 'unverified'),
+        ('candidate-b', 'person-b', 'constituency-b', 'Unconfirmed', 'prospective', 'unverified');
       INSERT INTO candidate_profiles
         (candidacy_id, slug, current_directory_observation_id, current_profile_observation_id)
       VALUES
@@ -321,6 +346,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         decision TEXT NOT NULL,
         rationale TEXT NOT NULL,
         reviewer_id TEXT NOT NULL,
+        supersedes_review_id TEXT,
         created_at TEXT NOT NULL
       );
       CREATE TABLE audit_events (
@@ -334,6 +360,13 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         id TEXT PRIMARY KEY,
         declaration_status TEXT NOT NULL
       );
+      CREATE TABLE policy_topics (
+        id TEXT PRIMARY KEY,
+        active INTEGER NOT NULL
+      );
+      CREATE TABLE constituencies (
+        id TEXT PRIMARY KEY
+      );
       CREATE TABLE source_item_version_entities (
         source_item_version_id TEXT NOT NULL,
         entity_type TEXT NOT NULL,
@@ -344,7 +377,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         review_id TEXT NOT NULL,
         confirmation_state TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        PRIMARY KEY (source_item_version_id, entity_type, entity_id)
+        PRIMARY KEY (source_item_version_id, entity_type, entity_id, review_id)
       );
       CREATE TABLE candidate_intelligence_heads (
         candidacy_id TEXT PRIMARY KEY,
@@ -361,6 +394,12 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         entity_type TEXT NOT NULL,
         entity_id TEXT NOT NULL
       );
+      CREATE UNIQUE INDEX reviews_root_target
+        ON reviews (target_type, target_id)
+        WHERE supersedes_review_id IS NULL;
+      CREATE UNIQUE INDEX reviews_superseded_once
+        ON reviews (supersedes_review_id)
+        WHERE supersedes_review_id IS NOT NULL;
     `);
     database.exec(sourceItemVersionReviewGuardSql);
     database.exec(sourceItemCandidateAssignmentReviewGuardSql);
@@ -409,6 +448,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         "approved",
         "Source and captured version checked.",
         "reviewer-a",
+        null,
         "2026-08-10T10:00:00.000Z",
       );
       database.prepare(updateSourceItemReviewStateSql).run(
@@ -417,6 +457,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         "item-a",
         "version-a",
         "hash-a",
+        "unreviewed",
       );
       database.prepare(
         `INSERT INTO source_item_version_entities
@@ -440,8 +481,8 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       ).run("candidacy-a", "corpus-a", "2026-08-10T10:00:00.000Z");
       database.prepare(
         `INSERT INTO audit_events (id, action, entity_type, entity_id, payload)
-         VALUES (?, 'source-item.reviewed', 'source-item-version', ?, '{}')`,
-      ).run("audit-a", "version-a");
+         VALUES (?, 'source-item.reviewed', 'source-item-version', ?, ?)`,
+      ).run("audit-a", "version-a", JSON.stringify({ reviewId: "review-a" }));
       database.exec("COMMIT");
     } catch (error) {
       database.exec("ROLLBACK");
@@ -452,7 +493,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       { ...database.prepare(
         "SELECT review_state, publication_state FROM source_items WHERE id = 'item-a'",
       ).get() },
-      { publication_state: "private", review_state: "approved" },
+      { publication_state: "published", review_state: "approved" },
     );
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM reviews").get().count, 1);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM audit_events").get().count, 1);
@@ -490,9 +531,118 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         "rejected",
         "This conflicts with the recorded founder decision.",
         "reviewer-a",
+        null,
         "2026-08-10T10:01:00.000Z",
       ),
-      /stale or already decided/,
+      /stale or decision head changed/,
+    );
+
+    database.prepare(insertSourceItemReviewSql).run(
+      "review-a-rejected",
+      "version-a",
+      "rejected",
+      "Reconsidered after confirming that this item is outside the election evidence scope.",
+      "reviewer-a",
+      "review-a",
+      "2026-08-10T10:01:00.000Z",
+    );
+    database.prepare(updateSourceItemReviewStateSql).run(
+      "rejected",
+      "rejected",
+      "item-a",
+      "version-a",
+      "hash-a",
+      "approved",
+    );
+    database.prepare(
+      `INSERT INTO audit_events (id, action, entity_type, entity_id, payload)
+       VALUES (?, 'source-item.reviewed', 'source-item-version', ?, ?)`,
+    ).run(
+      "audit-a-rejected",
+      "version-a",
+      JSON.stringify({ reviewId: "review-a-rejected", supersedesReviewId: "review-a" }),
+    );
+    assert.deepEqual(
+      { ...database.prepare(
+        "SELECT review_state, publication_state FROM source_items WHERE id = 'item-a'",
+      ).get() },
+      { publication_state: "withheld", review_state: "rejected" },
+    );
+    assert.throws(
+      () => database.prepare(insertSourceItemReviewSql).run(
+        "review-a-branch",
+        "version-a",
+        "approved",
+        "This competing decision was based on a stale editorial head.",
+        "reviewer-b",
+        "review-a",
+        "2026-08-10T10:01:30.000Z",
+      ),
+      /stale or decision head changed/,
+    );
+
+    database.prepare(insertSourceItemReviewSql).run(
+      "review-a-reapproved",
+      "version-a",
+      "approved",
+      "Re-approved after a second source and scope review.",
+      "reviewer-a",
+      "review-a-rejected",
+      "2026-08-10T10:02:00.000Z",
+    );
+    database.prepare(updateSourceItemReviewStateSql).run(
+      "approved",
+      "approved",
+      "item-a",
+      "version-a",
+      "hash-a",
+      "rejected",
+    );
+    database.prepare(
+      `INSERT INTO source_item_version_entities (
+         source_item_version_id, entity_type, entity_id, mention_text,
+         match_method, confidence, review_id, confirmation_state, created_at
+       ) VALUES (?, 'candidacy', ?, ?, ?, ?, ?, 'confirmed', ?)`,
+    ).run(
+      "version-a",
+      "candidacy-a",
+      "Candidate A",
+      "reconsideration-test",
+      1,
+      "review-a-reapproved",
+      "2026-08-10T10:02:00.000Z",
+    );
+    database.prepare(
+      `INSERT INTO audit_events (id, action, entity_type, entity_id, payload)
+       VALUES (?, 'source-item.reviewed', 'source-item-version', ?, ?)`,
+    ).run(
+      "audit-a-reapproved",
+      "version-a",
+      JSON.stringify({
+        reviewId: "review-a-reapproved",
+        supersedesReviewId: "review-a-rejected",
+      }),
+    );
+    assert.deepEqual(
+      { ...database.prepare(
+        `SELECT current_review.id, current_review.decision
+           FROM reviews current_review
+          WHERE current_review.target_type = 'source-item-version'
+            AND current_review.target_id = 'version-a'
+            AND NOT EXISTS (
+              SELECT 1 FROM reviews successor
+               WHERE successor.supersedes_review_id = current_review.id
+            )`,
+      ).get() },
+      { decision: "approved", id: "review-a-reapproved" },
+    );
+    assert.equal(
+      database.prepare(
+        `SELECT COUNT(*) AS count FROM source_item_version_entities
+          WHERE source_item_version_id = 'version-a'
+            AND entity_id = 'candidacy-a'`,
+      ).get().count,
+      2,
     );
 
     database.prepare(
@@ -511,6 +661,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         "rejected",
         "The source record identifies the wrong candidate in this item.",
         "reviewer-a",
+        null,
         "2026-08-10T10:02:00.000Z",
       );
       database.prepare(updateSourceItemReviewStateSql).run(
@@ -519,11 +670,16 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
         "item-rejected",
         "version-rejected",
         "hash-rejected",
+        "unreviewed",
       );
       database.prepare(
         `INSERT INTO audit_events (id, action, entity_type, entity_id, payload)
-         VALUES (?, 'source-item.reviewed', 'source-item-version', ?, '{}')`,
-      ).run("audit-rejected", "version-rejected");
+         VALUES (?, 'source-item.reviewed', 'source-item-version', ?, ?)`,
+      ).run(
+        "audit-rejected",
+        "version-rejected",
+        JSON.stringify({ reviewId: "review-rejected" }),
+      );
       database.exec("COMMIT");
     } catch (error) {
       database.exec("ROLLBACK");
@@ -567,6 +723,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       "approved",
       "Source and captured version checked before candidate filing existed.",
       "reviewer-a",
+      null,
       "2026-08-10T10:03:00.000Z",
     );
     database.prepare(updateSourceItemReviewStateSql).run(
@@ -575,6 +732,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       "item-legacy",
       "version-legacy",
       "hash-legacy",
+      "unreviewed",
     );
     database.prepare(insertSourceItemCandidateAssignmentReviewSql).run(
       "review-legacy-assignment",
@@ -582,6 +740,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       "approved",
       "Candidate filing checked against the already-approved source version.",
       "reviewer-a",
+      null,
       "2026-08-10T10:04:00.000Z",
     );
     database.prepare(
@@ -619,6 +778,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       "approved",
       "Source and captured version checked before candidate filing existed.",
       "reviewer-a",
+      null,
       "2026-08-10T10:05:00.000Z",
     );
     database.prepare(updateSourceItemReviewStateSql).run(
@@ -627,6 +787,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       "item-dismiss",
       "version-dismiss",
       "hash-dismiss",
+      "unreviewed",
     );
     database.prepare(insertSourceItemCandidateAssignmentReviewSql).run(
       "review-dismiss-assignment",
@@ -634,6 +795,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       "rejected",
       "The detected candidate name belongs to an unrelated quoted statement.",
       "reviewer-a",
+      null,
       "2026-08-10T10:06:00.000Z",
     );
     assert.throws(
@@ -724,6 +886,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       "approved",
       "The reappearing source content was reviewed as a new semantic transition.",
       "reviewer-a",
+      null,
       "2026-08-10T10:10:00.000Z",
     );
     database.prepare(updateSourceItemReviewStateSql).run(
@@ -732,6 +895,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
       "item-a",
       "version-a-reverted",
       "hash-a",
+      "needs-update",
     );
     assert.equal(
       database.prepare("SELECT review_state FROM source_items WHERE id = 'item-a'").get()
@@ -853,25 +1017,7 @@ test("source review transition is atomic, stale-safe and invalidated by changed 
   }
 });
 
-test("constituency interest uses explicit candidate and update associations", () => {
-  const ayreUpdates = updates.filter((update) => update.constituencyIds.includes("ayre-michael"));
-  const onchanUpdates = updates.filter((update) => update.constituencyIds.includes("onchan"));
-  const islandWideUpdates = updates.filter((update) => update.constituencyIds.length === 0);
-  const onchanCandidates = candidates
-    .filter((candidate) => candidate.constituency === "Onchan")
-    .map((candidate) => candidate.name)
-    .sort();
-
-  assert.equal(ayreUpdates.length, 2);
-  assert.equal(onchanUpdates.length, 0);
-  assert.equal(islandWideUpdates.length, 1);
-  assert.deepEqual(onchanCandidates, ["Rachel Glover", "Rob Callister"]);
-  assert.deepEqual(
-    updates.toSorted((left, right) => right.sortDate.localeCompare(left.sortDate)).map(
-      (update) => update.sortDate,
-    ),
-    ["2026-08-09", "2026-08-09", "2026-07-20", "2026-07-09"],
-  );
-  assert.equal(updates[0].dateQualifier, "Checked");
-  assert.equal(updates[3].dateQualifier, "Reviewed");
+test("open-source compatibility data contains no unreviewed candidate assertions", () => {
+  assert.deepEqual(candidates, []);
+  assert.deepEqual(updates, []);
 });

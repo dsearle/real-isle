@@ -65,15 +65,14 @@ export type HomeConstituency = {
 
 export type HomeCandidate = {
   constituencyId: string;
+  constituencyName: string;
   evidenceCount: number;
   initials: string;
   name: string;
   /** App-owned portrait URL that has already passed public reuse and publication review. */
   portraitUrl?: string | null;
-  priorities: readonly string[];
   slug: string;
   status: string;
-  summary: string;
 };
 
 export type HomeUpdate = {
@@ -208,7 +207,7 @@ function CandidateCollection({
         <span aria-hidden="true">⌁</span>
         <div>
           <strong>No reviewed profile for {emptyArea} yet</strong>
-          <p>Prospective candidates appear here only after their declaration source and identity have been checked.</p>
+          <p>Candidate profiles appear here only after their declaration status and public identity basis have been reviewed.</p>
         </div>
       </div>
     );
@@ -227,10 +226,7 @@ function CandidateCollection({
               <small>{candidate.evidenceCount} reviewed source{candidate.evidenceCount === 1 ? "" : "s"}</small>
             </div>
             <h3>{candidate.name}</h3>
-            <p>{candidate.summary}</p>
-            <ul aria-label={`${candidate.name}'s stated priorities`}>
-              {candidate.priorities.slice(0, 2).map((priority) => <li key={priority}>{priority}</li>)}
-            </ul>
+            <p>Public identity and source associations have completed profile review.</p>
             <strong className={styles.openProfile}>Open evidence profile <span aria-hidden="true">↗</span></strong>
           </div>
         </a>
@@ -258,7 +254,7 @@ function UpdateCollection({
           </div>
           <h3>{update.title}</h3>
           <p>{update.summary}</p>
-          <a href={update.url} target="_blank" rel="noreferrer">Read original source ↗</a>
+          <a href={update.url} target="_blank" rel="noreferrer">Visit reviewed source page ↗</a>
         </article>
       ))}
     </div>
@@ -340,10 +336,10 @@ function CandidateAtlasMap({
           const isSelected = constituency.id === selectedId;
           const anchorPosition = anchorPositions[constituency.id];
           const profileLabel = `${areaCandidates.length} reviewed candidate profile${areaCandidates.length === 1 ? "" : "s"}`;
+          if (!anchorPosition?.visible) return null;
           const clusterClass = [
             styles.atlasMarker,
             isSelected ? styles.atlasMarkerSelected : "",
-            !anchorPosition?.visible ? styles.atlasMarkerPending : "",
           ].filter(Boolean).join(" ");
 
           return (
@@ -546,7 +542,7 @@ export function HomeViewExperience({
               <div className={styles.atlasNews}>
             <div className={styles.sectionHeading}>
               <div>
-                <span>Founder-curated launch briefing</span>
+                <span>Reviewed source preview</span>
                 <h2>{selected ? `For ${selected.name}` : "Across the Island"}</h2>
               </div>
               <a href="/latest">Election desk ↗</a>
@@ -590,7 +586,7 @@ export function HomeViewExperience({
             </div>
             <div className={styles.deskStatus}>
               <span><i aria-hidden="true" /> Reviewed evidence only</span>
-              <strong>Every summary opens to its original source</strong>
+              <strong>Every summary links to the reviewed source page</strong>
               <small>Collection remains separate; nothing publishes automatically</small>
             </div>
           </div>
@@ -614,7 +610,7 @@ export function HomeViewExperience({
             <div className={styles.deskMain}>
               <div className={styles.deskHeading}>
                 <div>
-                  <span>{selected ? `Prioritising ${selected.name}` : "All reviewed updates"}</span>
+                  <span>{selected ? `Prioritising ${selected.name} within this preview` : "Reviewed source preview"}</span>
                   <h2>{selected && localUpdates.length ? "Your area comes first" : "The reviewed briefing"}</h2>
                 </div>
                 <a href="/latest">Full election desk ↗</a>

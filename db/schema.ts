@@ -310,6 +310,29 @@ export const sourceItemHeads = sqliteTable("source_item_heads", {
   updatedAt: updatedAt(),
 });
 
+/**
+ * Opaque, public-safe change token for the currently published projection.
+ * Database triggers rotate the token in the same transaction as any source,
+ * candidate-profile or candidate-analysis visibility change. The public API
+ * deliberately exposes only `head`, never decision counts or timestamps.
+ */
+export const publicPublicationHead = sqliteTable(
+  "public_publication_head",
+  {
+    singleton: integer("singleton").primaryKey().default(1),
+    head: text("head")
+      .notNull()
+      .default(sql`(lower(hex(randomblob(16))))`),
+  },
+  (table) => [
+    check("public_publication_head_singleton_check", sql`${table.singleton} = 1`),
+    check(
+      "public_publication_head_format_check",
+      sql`length(${table.head}) = 32 AND ${table.head} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
 export const ingestionRunItems = sqliteTable(
   "ingestion_run_items",
   {
@@ -396,6 +419,7 @@ export const candidateProfiles = sqliteTable(
     currentProfileObservationId: text("current_profile_observation_id").references(
       () => candidateProfileObservations.id,
     ),
+    currentBasisHash: text("current_basis_hash"),
     completenessState: text("completeness_state").notNull().default("directory-only"),
     reviewState: text("review_state").notNull().default("unreviewed"),
     publicationState: text("publication_state").notNull().default("private"),
@@ -898,9 +922,25 @@ export const reviews = sqliteTable(
     decision: text("decision").notNull(),
     rationale: text("rationale").notNull(),
     reviewerId: text("reviewer_id").notNull(),
+    supersedesReviewId: text("supersedes_review_id").references(
+      (): AnySQLiteColumn => reviews.id,
+    ),
     createdAt: createdAt(),
   },
-  (table) => [index("idx_reviews_target_created").on(table.targetType, table.targetId, table.createdAt)],
+  (table) => [
+    index("idx_reviews_target_created").on(table.targetType, table.targetId, table.createdAt),
+    uniqueIndex("idx_reviews_root_target")
+      .on(table.targetType, table.targetId)
+      .where(sql`${table.supersedesReviewId} IS NULL`),
+    uniqueIndex("idx_reviews_superseded_once")
+      .on(table.supersedesReviewId)
+      .where(sql`${table.supersedesReviewId} IS NOT NULL`),
+    check("reviews_decision_check", sql`${table.decision} IN ('approved', 'rejected')`),
+    check(
+      "reviews_no_self_supersession_check",
+      sql`${table.supersedesReviewId} IS NULL OR ${table.supersedesReviewId} != ${table.id}`,
+    ),
+  ],
 );
 
 export const sourceItemVersionEntities = sqliteTable(
@@ -921,7 +961,9 @@ export const sourceItemVersionEntities = sqliteTable(
     createdAt: createdAt(),
   },
   (table) => [
-    primaryKey({ columns: [table.sourceItemVersionId, table.entityType, table.entityId] }),
+    primaryKey({
+      columns: [table.sourceItemVersionId, table.entityType, table.entityId, table.reviewId],
+    }),
     index("idx_source_item_version_entities_entity").on(table.entityType, table.entityId),
     index("idx_source_item_version_entities_review").on(table.reviewId),
     check(

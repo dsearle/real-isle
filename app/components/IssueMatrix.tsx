@@ -1,6 +1,7 @@
 "use client";
 
-import { candidates, constituencies } from "../lib/data";
+/* eslint-disable jsx-a11y/no-noninteractive-tabindex -- The overflowing comparison region must be keyboard-scrollable. */
+
 import { useCivicPreferences } from "./CivicPreferences";
 import styles from "./IssueMatrix.module.css";
 
@@ -10,71 +11,95 @@ const issues = [
   { id: "housing", label: "Housing", question: "How should supply and affordability be addressed?" },
 ] as const;
 
-export function IssueMatrix() {
+type IssueMatrixCandidate = {
+  constituencyId: string;
+  constituencyName: string;
+  initials: string;
+  name: string;
+  slug: string;
+};
+
+export function IssueMatrix({
+  candidates,
+  constituencies,
+}: {
+  candidates: readonly IssueMatrixCandidate[];
+  constituencies: readonly { id: string; name: string }[];
+}) {
   const { selectedConstituencyId } = useCivicPreferences();
   const selected = constituencies.find(
     (constituency) => constituency.id === selectedConstituencyId,
   );
   const selectedCandidates = candidates
-    .filter((candidate) => candidate.constituency === selected?.name)
+    .filter((candidate) => candidate.constituencyId === selected?.id)
     .toSorted((left, right) => left.name.localeCompare(right.name, "en-GB"));
-  const otherCandidates = candidates
-    .filter((candidate) => candidate.constituency !== selected?.name)
-    .toSorted((left, right) => left.name.localeCompare(right.name, "en-GB"));
-  const compared = [...selectedCandidates, ...otherCandidates].slice(0, 4);
+  const compared = selectedCandidates;
 
   return (
     <div className="matrix-wrap">
       <p className={styles.context} aria-live="polite">
         {selected
           ? selectedCandidates.length
-            ? `Candidates for ${selected.name} are grouped first. Each group remains alphabetical.`
-            : `No reviewed candidate profile for ${selected.name} yet. Showing other reviewed profiles alphabetically.`
-          : "Choose an area above to prioritise its reviewed candidates in this comparison."}
+            ? `Showing every approved candidate profile for ${selected.name}, alphabetically.`
+            : `No approved candidate profile for ${selected.name} is available yet.`
+          : "Choose an area above to compare all of its approved candidate profiles."}
       </p>
-      <div className="matrix-scroll" role="region" aria-label="Scrollable candidate issue comparison">
-        <table className="issue-matrix">
-          <thead>
-            <tr>
-              <th scope="col">Issue</th>
-              {compared.map((candidate) => (
-                <th scope="col" key={candidate.slug}>
-                  <span>{candidate.initials}</span>
-                  {candidate.name}
-                  <small className={styles.candidateConstituency}>{candidate.constituency}</small>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {issues.map((issue) => (
-              <tr key={issue.id}>
-                <th scope="row">
-                  <strong>{issue.label}</strong>
-                  <small>{issue.question}</small>
-                </th>
-                {compared.map((candidate) => {
-                  const position = candidate.positions[issue.id];
-                  return (
-                    <td key={candidate.slug}>
-                      <span className={`position-state position-${position.state}`}>{position.label}</span>
-                      <p>{position.detail}</p>
-                      <a href={candidate.sources[0].url} target="_blank" rel="noreferrer">
-                        Evidence ↗
-                      </a>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="matrix-legend">
-        <span><i className="legend-found" /> Attributable position</span>
-        <span><i className="legend-partial" /> Direction or priority only</span>
-        <span><i className="legend-missing" /> No reviewed position found</span>
-      </div>
+      {compared.length ? (
+        <>
+          <p className={styles.scrollInstructions} id="issue-matrix-scroll-instructions">
+            Scroll horizontally to compare every candidate. Keyboard users can focus this table area and use the arrow keys.
+          </p>
+          <div
+            aria-describedby="issue-matrix-scroll-instructions"
+            aria-label={`Scrollable candidate issue comparison for ${selected?.name ?? "selected area"}`}
+            className={`matrix-scroll ${styles.scrollRegion}`}
+            role="region"
+            tabIndex={0}
+          >
+            <table className="issue-matrix">
+              <thead>
+                <tr>
+                  <th scope="col">Issue</th>
+                  {compared.map((candidate) => (
+                    <th scope="col" key={candidate.slug}>
+                      <span>{candidate.initials}</span>
+                      {candidate.name}
+                      <small className={styles.candidateConstituency}>{candidate.constituencyName}</small>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {issues.map((issue) => (
+                  <tr key={issue.id}>
+                    <th scope="row">
+                      <strong>{issue.label}</strong>
+                      <small>{issue.question}</small>
+                    </th>
+                    {compared.map((candidate) => (
+                      <td key={candidate.slug}>
+                        <span className="position-state position-missing">Awaiting review</span>
+                        <p>No proposition-level position is published until its exact evidence completes review.</p>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div className={styles.empty}>
+          {selected
+            ? `There are no approved candidate profiles for ${selected.name} to compare yet.`
+            : "Select a constituency to begin. Profiles appear only after their public identity basis has been approved."}
+        </div>
+      )}
+      {compared.length ? (
+        <div className="matrix-legend">
+          <span><i className="legend-missing" /> Awaiting proposition-level review</span>
+        </div>
+      ) : null}
     </div>
   );
 }

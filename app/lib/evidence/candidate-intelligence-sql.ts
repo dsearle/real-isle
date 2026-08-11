@@ -14,6 +14,10 @@ export const sourceItemVersionEntityInsertGuardSql = `CREATE TRIGGER IF NOT EXIS
             AND items.content_hash = versions.payload_hash
             AND items.review_state = 'approved'
             AND NOT EXISTS (
+              SELECT 1 FROM reviews successor
+               WHERE successor.supersedes_review_id = review.id
+            )
+            AND NOT EXISTS (
               SELECT 1
                 FROM audit_events completed_audit
                WHERE completed_audit.entity_type = 'source-item-version'
@@ -25,6 +29,7 @@ export const sourceItemVersionEntityInsertGuardSql = `CREATE TRIGGER IF NOT EXIS
                    (review.target_type = 'source-item-version-assignment'
                      AND completed_audit.action = 'source-item.candidate-assignment-reviewed')
                  )
+                 AND json_extract(completed_audit.payload, '$.reviewId') = review.id
             )
             AND (
               (NEW.confirmation_state = 'confirmed' AND review.decision = 'approved')
@@ -43,6 +48,10 @@ export const sourceItemVersionEntityInsertGuardSql = `CREATE TRIGGER IF NOT EXIS
        THEN RAISE(ABORT, 'entity projection requires a current approved source version')
      END;
      SELECT CASE
+       WHEN NEW.entity_type NOT IN ('candidacy', 'topic', 'constituency')
+       THEN RAISE(ABORT, 'entity projection type is not supported')
+     END;
+     SELECT CASE
        WHEN NEW.entity_type = 'candidacy'
         AND NOT EXISTS (
           SELECT 1 FROM candidacies
@@ -50,6 +59,22 @@ export const sourceItemVersionEntityInsertGuardSql = `CREATE TRIGGER IF NOT EXIS
              AND declaration_status != 'source-removed'
         )
        THEN RAISE(ABORT, 'entity projection candidacy is not current')
+     END;
+     SELECT CASE
+       WHEN NEW.entity_type = 'topic'
+        AND NOT EXISTS (
+          SELECT 1 FROM policy_topics
+           WHERE id = NEW.entity_id
+        )
+       THEN RAISE(ABORT, 'entity projection topic is not current')
+     END;
+     SELECT CASE
+       WHEN NEW.entity_type = 'constituency'
+        AND NOT EXISTS (
+          SELECT 1 FROM constituencies
+           WHERE id = NEW.entity_id
+        )
+       THEN RAISE(ABORT, 'entity projection constituency is not current')
      END;
    END`;
 
@@ -82,6 +107,10 @@ export const candidateIntelligenceInvalidationSql = `CREATE TRIGGER IF NOT EXIST
            AND review.target_type IN ('source-item-version', 'source-item-version-assignment')
            AND review.target_id = entities.source_item_version_id
            AND review.decision = 'approved'
+           AND NOT EXISTS (
+             SELECT 1 FROM reviews successor
+              WHERE successor.supersedes_review_id = review.id
+           )
       );
    END`;
 
@@ -107,6 +136,10 @@ export const candidateIntelligenceRevisionInsertGuardSql = `CREATE TRIGGER IF NO
               ON review.target_type = 'candidate-analysis-revision'
              AND review.target_id = revisions.id
              AND review.decision = 'approved'
+             AND NOT EXISTS (
+               SELECT 1 FROM reviews successor
+                WHERE successor.supersedes_review_id = review.id
+             )
             JOIN audit_events audit
               ON audit.action = 'candidate-analysis.reviewed'
              AND audit.entity_type = 'candidate-analysis-revision'
@@ -154,6 +187,10 @@ export const candidateIntelligenceRevisionUpdateGuardSql = `CREATE TRIGGER IF NO
               ON review.target_type = 'candidate-analysis-revision'
              AND review.target_id = revisions.id
              AND review.decision = 'approved'
+             AND NOT EXISTS (
+               SELECT 1 FROM reviews successor
+                WHERE successor.supersedes_review_id = review.id
+             )
             JOIN audit_events audit
               ON audit.action = 'candidate-analysis.reviewed'
              AND audit.entity_type = 'candidate-analysis-revision'
@@ -175,6 +212,10 @@ export const candidateIntelligenceRevisionUpdateGuardSql = `CREATE TRIGGER IF NO
               ON review.target_type = 'candidate-analysis-revision'
              AND review.target_id = revisions.id
              AND review.decision = 'approved'
+             AND NOT EXISTS (
+               SELECT 1 FROM reviews successor
+                WHERE successor.supersedes_review_id = review.id
+             )
             JOIN audit_events audit
               ON audit.action = 'candidate-analysis.reviewed'
              AND audit.entity_type = 'candidate-analysis-revision'
