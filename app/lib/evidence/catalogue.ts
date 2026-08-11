@@ -3,11 +3,13 @@ import { candidates, constituencies } from "../data.ts";
 export type MonitoredSource = {
   active: boolean;
   allowedHosts: readonly string[];
+  documentHosts: readonly string[];
   feedType: "rss" | "atom" | "youtube" | "candidate-directory";
   feedUrl: string;
   homepageUrl: string;
   id: string;
   itemType: "audio" | "candidate-profile" | "news" | "official" | "video";
+  minimumRequestIntervalMs: number;
   name: string;
   pollIntervalMinutes: number;
   publisher: string;
@@ -61,6 +63,8 @@ export const monitoredSources: MonitoredSource[] = [
     sourceTier: 3,
     active: true,
     allowedHosts: ["www.manxradio.com", "manxradio.com"],
+    documentHosts: ["www.manxradio.com", "manxradio.com"],
+    minimumRequestIntervalMs: 8_250,
     pollIntervalMinutes: 10,
     rightsState: "restricted-copy",
     storeFullContent: false,
@@ -76,6 +80,8 @@ export const monitoredSources: MonitoredSource[] = [
     sourceTier: 3,
     active: true,
     allowedHosts: ["www.manxradio.com", "manxradio.com"],
+    documentHosts: ["www.manxradio.com", "manxradio.com"],
+    minimumRequestIntervalMs: 8_250,
     pollIntervalMinutes: 10,
     rightsState: "restricted-copy",
     storeFullContent: false,
@@ -91,6 +97,8 @@ export const monitoredSources: MonitoredSource[] = [
     sourceTier: 3,
     active: true,
     allowedHosts: ["www.manxradio.com", "manxradio.com"],
+    documentHosts: ["www.manxradio.com", "manxradio.com"],
+    minimumRequestIntervalMs: 8_250,
     pollIntervalMinutes: 15,
     rightsState: "restricted-copy",
     storeFullContent: false,
@@ -106,6 +114,8 @@ export const monitoredSources: MonitoredSource[] = [
     sourceTier: 3,
     active: true,
     allowedHosts: ["feeds.bbci.co.uk", "www.bbc.co.uk", "bbc.co.uk"],
+    documentHosts: ["www.bbc.co.uk", "bbc.co.uk"],
+    minimumRequestIntervalMs: 3_000,
     pollIntervalMinutes: 15,
     rightsState: "metadata-only",
     storeFullContent: false,
@@ -121,6 +131,8 @@ export const monitoredSources: MonitoredSource[] = [
     sourceTier: 3,
     active: true,
     allowedHosts: ["www.iomtoday.co.im", "iomtoday.co.im"],
+    documentHosts: ["www.iomtoday.co.im", "iomtoday.co.im"],
+    minimumRequestIntervalMs: 5_000,
     pollIntervalMinutes: 15,
     rightsState: "metadata-only",
     storeFullContent: false,
@@ -136,6 +148,8 @@ export const monitoredSources: MonitoredSource[] = [
     sourceTier: 3,
     active: true,
     allowedHosts: ["feeds.captivate.fm", "www.manxradio.com", "manxradio.com"],
+    documentHosts: [],
+    minimumRequestIntervalMs: 5_000,
     pollIntervalMinutes: 30,
     rightsState: "metadata-only",
     storeFullContent: false,
@@ -151,6 +165,8 @@ export const monitoredSources: MonitoredSource[] = [
     sourceTier: 2,
     active: true,
     allowedHosts: ["www.youtube.com", "youtube.com"],
+    documentHosts: [],
+    minimumRequestIntervalMs: 2_000,
     pollIntervalMinutes: 15,
     rightsState: "metadata-only",
     storeFullContent: false,
@@ -166,6 +182,8 @@ export const monitoredSources: MonitoredSource[] = [
     sourceTier: 1,
     active: true,
     allowedHosts: ["www.youtube.com", "youtube.com"],
+    documentHosts: [],
+    minimumRequestIntervalMs: 2_000,
     pollIntervalMinutes: 60,
     rightsState: "metadata-only",
     storeFullContent: false,
@@ -181,6 +199,8 @@ export const monitoredSources: MonitoredSource[] = [
     sourceTier: 1,
     active: true,
     allowedHosts: ["tynwald.org.im", "www.tynwald.org.im"],
+    documentHosts: ["tynwald.org.im", "www.tynwald.org.im"],
+    minimumRequestIntervalMs: 5_000,
     pollIntervalMinutes: 1_440,
     rightsState: "public-record",
     storeFullContent: false,

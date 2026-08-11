@@ -30,6 +30,10 @@ import {
   projectCollectionReason,
 } from "./collection-reason";
 import {
+  runDueDocumentAcquisition,
+  type DocumentAcquisitionSummary,
+} from "./document-acquisition";
+import {
   deleteCurrentKeywordSignalsSql,
   insertCurrentKeywordSignalSql,
   projectKeywordCollectionSignals,
@@ -37,6 +41,7 @@ import {
 import { parseFeed, type NormalizedFeedItem } from "./feed";
 import { deterministicId, randomId, sha256Hex, stableJson } from "./integrity";
 import { rotateSourceIdsForWindow } from "./ingestion-scheduling";
+import { analyzeReadableDocument } from "./machine-analysis";
 import { fetchBounded, type BoundedResponse } from "./network";
 import { seedEvidenceReferenceData } from "./seed";
 import { ensureEvidenceTriggers } from "./triggers";
@@ -82,6 +87,7 @@ export type SourceRunResult = {
 };
 
 export type IngestionResult = {
+  documents: DocumentAcquisitionSummary | null;
   invocationId: string;
   runs: SourceRunResult[];
 };
@@ -2778,7 +2784,14 @@ export async function runEvidenceIngestion(
   await ensureEvidenceTriggers(bindings.DB);
   await seedEvidenceReferenceData(bindings.DB);
   await backfillCandidateProfileBasisHashes(bindings.DB);
-  await backfillLegacyCollectionAssessments(bindings.DB, command.actor);
+  // Existing evidence is progressively frozen into the same versioned relevance
+  // ledger as new captures.  Keep traffic-triggered work small; the scheduler
+  // clears the library steadily without letting one invocation monopolise D1.
+  await backfillLegacyCollectionAssessments(
+    bindings.DB,
+    command.actor,
+    command.trigger === "scheduler" ? 20 : command.trigger === "manual" ? 12 : 8,
+  );
   const allowedSourceIds = new Set(command.sourceIds ?? monitoredSources.map((source) => source.id));
   const sourceOrder = new Map(command.sourceIds?.map((sourceId, index) => [sourceId, index]) ?? []);
   const limit = Math.max(1, Math.min(command.limit ?? 2, 6));
@@ -2818,7 +2831,18 @@ export async function runEvidenceIngestion(
         : await runSource(bindings, source, command, leaseToken),
     );
   }
-  return { invocationId: command.idempotencyKey, runs };
+  // An explicit empty source list is the documented safe “assess only” mode.
+  // It must not make any publisher request.  Ordinary scheduled/manual runs
+  // scrape a small, fair rotation of already-assessed eligible pages and feed
+  // the transient readable text straight into the guarded analyser.
+  const documents = command.sourceIds?.length === 0
+    ? null
+    : await runDueDocumentAcquisition(bindings, {
+      actor: command.actor,
+      analyze: analyzeReadableDocument,
+      limit: command.trigger === "traffic" ? 1 : 4,
+    });
+  return { documents, invocationId: command.idempotencyKey, runs };
 }
 
 export function trafficSourceIdsForWindow(tenMinuteWindow: number) {

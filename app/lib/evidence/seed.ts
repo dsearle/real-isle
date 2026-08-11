@@ -1,12 +1,12 @@
-import type { MonitoredSource } from "./catalogue";
+import type { MonitoredSource } from "./catalogue.ts";
 import {
   candidateCatalogue,
   constituencyCatalogue,
   election,
   monitoredSources,
   policyTopicCatalogue,
-} from "./catalogue";
-import { ensureEvidenceTriggers } from "./triggers";
+} from "./catalogue.ts";
+import { ensureEvidenceTriggers } from "./triggers.ts";
 
 function sortName(fullName: string) {
   const parts = fullName.trim().split(/\s+/);

@@ -10,9 +10,15 @@ import type {
   TranscriptQueueItem,
 } from "../lib/evidence/status";
 import type { CollectionRoute, CollectionSignal } from "../lib/evidence/collection-reason";
+import type {
+  MachineAnalysisDashboardView,
+  MachineAnalysisReviewAction,
+  MachineAnalysisReviewReceiptView,
+} from "../lib/evidence/machine-analysis-view";
+import { MachineAnalysisPanel } from "./MachineAnalysisPanel";
 import styles from "./ResearchOperationsDashboard.module.css";
 
-type WorkspaceTab = "overview" | "candidates" | "evidence" | "transcripts" | "sources";
+type WorkspaceTab = "overview" | "candidates" | "evidence" | "analysis" | "transcripts" | "sources";
 type ReviewDecision = "approved" | "rejected";
 type EditorialState = "pending" | "approved" | "rejected";
 
@@ -74,6 +80,7 @@ const workspaceTabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "candidates", label: "Candidates" },
   { id: "evidence", label: "Evidence library" },
+  { id: "analysis", label: "Machine analysis" },
   { id: "transcripts", label: "Transcripts" },
   { id: "sources", label: "Sources & runs" },
 ];
@@ -1527,11 +1534,14 @@ function SourcesPanel({ dashboard }: { dashboard: EvidenceDashboard }) {
 
 export function ResearchOperationsDashboard({
   dashboard,
+  machineAnalysis = null,
   reviewerName,
 }: {
   dashboard: EvidenceDashboard | null;
+  machineAnalysis?: MachineAnalysisDashboardView | null;
   reviewerName: string;
 }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
   const [reviewReceipts, setReviewReceipts] = useState<ReviewReceipts>({});
   const [approvedReviewReceipts, setApprovedReviewReceipts] = useState<ReviewReceipts>({});
@@ -1554,6 +1564,41 @@ export function ResearchOperationsDashboard({
       : item.editorialState === "pending";
   }).length;
 
+  async function reviewMachineAnalysis(input: {
+    action: MachineAnalysisReviewAction;
+    analysisId: string;
+    rationale: string;
+    supersedesDecisionId: string | null;
+  }): Promise<MachineAnalysisReviewReceiptView> {
+    const endpoint = input.action === "verify"
+      ? `/api/admin/research/analysis/${encodeURIComponent(input.analysisId)}/verify`
+      : `/api/admin/research/analysis/${encodeURIComponent(input.analysisId)}/review`;
+    const body = input.action === "verify"
+      ? {
+          expectedReviewId: input.supersedesDecisionId,
+          rationale: input.rationale,
+        }
+      : {
+          decision: input.action === "restore" ? "approved" : "rejected",
+          expectedReviewId: input.supersedesDecisionId,
+          rationale: input.rationale,
+        };
+    const response = await fetch(endpoint, {
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    const result = await response.json() as {
+      error?: string;
+      receipt?: MachineAnalysisReviewReceiptView;
+    };
+    if (!response.ok || !result.receipt) {
+      throw new Error(result.error ?? "The machine-analysis decision could not be recorded.");
+    }
+    router.refresh();
+    return result.receipt;
+  }
+
   return (
     <div className={styles.workspace}>
       <header className={styles.workspaceHeader}>
@@ -1570,6 +1615,7 @@ export function ResearchOperationsDashboard({
           >
             {tab.label}
             {tab.id === "evidence" ? <b>{pendingEvidenceCount}</b> : null}
+            {tab.id === "analysis" ? <b>{machineAnalysis?.analyses.length ?? 0}</b> : null}
             {tab.id === "transcripts" ? <b>{dashboard.counts.transcriptSources}</b> : null}
           </button>
         ))}
@@ -1602,6 +1648,19 @@ export function ResearchOperationsDashboard({
             }}
             receipts={reviewReceipts}
           />
+        ) : null}
+        {activeTab === "analysis" ? machineAnalysis?.state === "available" ? (
+          <MachineAnalysisPanel
+            analyses={machineAnalysis.analyses}
+            onReview={reviewMachineAnalysis}
+            queue={machineAnalysis.queue}
+          />
+        ) : (
+          <section className={styles.unavailable}>
+            <span>Machine analysis</span>
+            <h2>The automatic-reading workspace is unavailable.</h2>
+            <p>No private extracts or stale machine results have been exposed.</p>
+          </section>
         ) : null}
         {activeTab === "transcripts" ? <TranscriptsPanel dashboard={dashboard} /> : null}
         {activeTab === "sources" ? <SourcesPanel dashboard={dashboard} /> : null}

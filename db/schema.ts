@@ -311,6 +311,188 @@ export const sourceItemHeads = sqliteTable("source_item_heads", {
 });
 
 /**
+ * Immutable observations of the robots policy used before an article fetch.
+ * The current policy pointer is kept separately so refreshing robots.txt never
+ * rewrites the policy that authorised an earlier capture.
+ */
+export const robotsPolicies = sqliteTable(
+  "robots_policies",
+  {
+    id: text("id").primaryKey(),
+    exactHost: text("exact_host").notNull(),
+    userAgentToken: text("user_agent_token").notNull(),
+    fetchedAt: text("fetched_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    policyState: text("policy_state").notNull(),
+    httpStatus: integer("http_status"),
+    etag: text("etag"),
+    lastModified: text("last_modified"),
+    bodyHash: text("body_hash"),
+    rulesJson: text("rules_json").notNull().default("[]"),
+    rulesHash: text("rules_hash").notNull(),
+    crawlDelayMs: integer("crawl_delay_ms").notNull().default(0),
+    createdByAuditEventId: text("created_by_audit_event_id")
+      .notNull()
+      .references(() => auditEvents.id),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("idx_robots_policies_host_fetched").on(
+      table.exactHost,
+      table.userAgentToken,
+      table.fetchedAt,
+    ),
+    index("idx_robots_policies_audit_event").on(table.createdByAuditEventId),
+    check(
+      "robots_policies_state_check",
+      sql`${table.policyState} IN ('rules', 'allow-default', 'unreachable')`,
+    ),
+    check("robots_policies_delay_check", sql`${table.crawlDelayMs} >= 0`),
+    check("robots_policies_rules_json_check", sql`json_valid(${table.rulesJson})`),
+    check(
+      "robots_policies_rules_hash_check",
+      sql`length(${table.rulesHash}) = 64 AND ${table.rulesHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "robots_policies_body_hash_check",
+      sql`${table.bodyHash} IS NULL OR (length(${table.bodyHash}) = 64 AND ${table.bodyHash} NOT GLOB '*[^0-9a-f]*')`,
+    ),
+  ],
+);
+
+export const robotsPolicyHeads = sqliteTable(
+  "robots_policy_heads",
+  {
+    exactHost: text("exact_host").notNull(),
+    userAgentToken: text("user_agent_token").notNull(),
+    currentPolicyId: text("current_policy_id")
+      .notNull()
+      .references(() => robotsPolicies.id),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.exactHost, table.userAgentToken] }),
+    uniqueIndex("idx_robots_policy_heads_policy").on(table.currentPolicyId),
+  ],
+);
+
+/**
+ * A capture is the immutable bridge between feed discovery and readable-page
+ * analysis. Full text is intentionally absent from this table: it is either
+ * retained in private R2 under an explicit rights basis or handed directly to
+ * the synchronous analyser and discarded.
+ */
+export const sourceDocumentCaptures = sqliteTable(
+  "source_document_captures",
+  {
+    id: text("id").primaryKey(),
+    sourceItemId: text("source_item_id")
+      .notNull()
+      .references(() => sourceItems.id),
+    sourceItemVersionId: text("source_item_version_id")
+      .notNull()
+      .references(() => sourceItemVersions.id),
+    ingestionRunId: text("ingestion_run_id")
+      .notNull()
+      .references(() => ingestionRuns.id),
+    snapshotId: text("snapshot_id")
+      .notNull()
+      .references(() => sourceSnapshots.id),
+    robotsPolicyId: text("robots_policy_id")
+      .notNull()
+      .references(() => robotsPolicies.id),
+    observedAt: text("observed_at").notNull(),
+    rightsState: text("rights_state").notNull(),
+    retentionOutcome: text("retention_outcome").notNull(),
+    extractorVersion: text("extractor_version").notNull(),
+    extractorConfigHash: text("extractor_config_hash").notNull(),
+    extractionManifestJson: text("extraction_manifest_json").notNull(),
+    extractionManifestHash: text("extraction_manifest_hash").notNull(),
+    readableTextHash: text("readable_text_hash").notNull(),
+    readableTextLength: integer("readable_text_length").notNull(),
+    readableTextStorageKey: text("readable_text_storage_key"),
+    shortExtract: text("short_extract").notNull().default(""),
+    shortExtractStartOffset: integer("short_extract_start_offset").notNull().default(0),
+    shortExtractEndOffset: integer("short_extract_end_offset").notNull().default(0),
+    createdByAuditEventId: text("created_by_audit_event_id")
+      .notNull()
+      .references(() => auditEvents.id),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_source_document_capture_identity").on(
+      table.sourceItemVersionId,
+      table.snapshotId,
+      table.extractorVersion,
+      table.extractorConfigHash,
+    ),
+    index("idx_source_document_captures_item_observed").on(
+      table.sourceItemId,
+      table.observedAt,
+    ),
+    index("idx_source_document_captures_audit_event").on(table.createdByAuditEventId),
+    check(
+      "source_document_captures_rights_check",
+      sql`${table.rightsState} IN ('restricted-copy', 'metadata-only', 'public-record')`,
+    ),
+    check(
+      "source_document_captures_retention_check",
+      sql`${table.retentionOutcome} IN ('metadata-only', 'stored-private', 'stored-publishable')`,
+    ),
+    check(
+      "source_document_captures_storage_check",
+      sql`(${table.retentionOutcome} = 'metadata-only' AND ${table.readableTextStorageKey} IS NULL) OR (${table.retentionOutcome} != 'metadata-only' AND ${table.readableTextStorageKey} IS NOT NULL)`,
+    ),
+    check(
+      "source_document_captures_manifest_json_check",
+      sql`json_valid(${table.extractionManifestJson})`,
+    ),
+    check(
+      "source_document_captures_hashes_check",
+      sql`length(${table.extractorConfigHash}) = 64 AND ${table.extractorConfigHash} NOT GLOB '*[^0-9a-f]*' AND length(${table.extractionManifestHash}) = 64 AND ${table.extractionManifestHash} NOT GLOB '*[^0-9a-f]*' AND length(${table.readableTextHash}) = 64 AND ${table.readableTextHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check("source_document_captures_text_length_check", sql`${table.readableTextLength} >= 0`),
+    check(
+      "source_document_captures_extract_offsets_check",
+      sql`${table.shortExtractStartOffset} >= 0 AND ${table.shortExtractEndOffset} >= ${table.shortExtractStartOffset} AND ${table.shortExtractEndOffset} <= ${table.readableTextLength}`,
+    ),
+  ],
+);
+
+export const sourceDocumentHeads = sqliteTable(
+  "source_document_heads",
+  {
+    sourceItemId: text("source_item_id")
+      .primaryKey()
+      .references(() => sourceItems.id, { onDelete: "cascade" }),
+    currentCaptureId: text("current_capture_id").references(() => sourceDocumentCaptures.id),
+    crawlState: text("crawl_state").notNull().default("pending"),
+    nextCheckAt: text("next_check_at"),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: text("lease_expires_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    lastAttemptAt: text("last_attempt_at"),
+    lastSuccessAt: text("last_success_at"),
+    lastError: text("last_error"),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("idx_source_document_heads_due").on(table.crawlState, table.nextCheckAt),
+    check(
+      "source_document_heads_state_check",
+      sql`${table.crawlState} IN ('pending', 'ready', 'unchanged', 'robots-blocked', 'access-blocked', 'unsupported', 'failed')`,
+    ),
+    check("source_document_heads_attempt_count_check", sql`${table.attemptCount} >= 0`),
+    check("source_document_heads_failure_count_check", sql`${table.consecutiveFailures} >= 0`),
+    check(
+      "source_document_heads_lease_pair_check",
+      sql`(${table.leaseToken} IS NULL AND ${table.leaseExpiresAt} IS NULL) OR (${table.leaseToken} IS NOT NULL AND ${table.leaseExpiresAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+/**
  * Opaque, public-safe change token for the currently published projection.
  * Database triggers rotate the token in the same transaction as any source,
  * candidate-profile or candidate-analysis visibility change. The public API
@@ -1107,6 +1289,395 @@ export const sourceItemVersionCollectionAssessments = sqliteTable(
     check(
       "collection_assessments_reason_hash_check",
       sql`length(${table.canonicalReasonHash}) = 64 AND ${table.canonicalReasonHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
+/**
+ * Immutable, rights-safe manifest of the exact document state analysed by the
+ * machine lane. Full readable text is deliberately not retained here; the
+ * source-document capture owns retention and this record freezes only hashes,
+ * block ranges and the deterministic association basis.
+ */
+export const machineAnalysisInputs = sqliteTable(
+  "machine_analysis_inputs",
+  {
+    id: text("id").primaryKey(),
+    sourceItemId: text("source_item_id")
+      .notNull()
+      .references(() => sourceItems.id),
+    sourceItemVersionId: text("source_item_version_id")
+      .notNull()
+      .references(() => sourceItemVersions.id),
+    documentCaptureId: text("document_capture_id")
+      .notNull()
+      .references(() => sourceDocumentCaptures.id),
+    sourceSnapshotId: text("source_snapshot_id")
+      .notNull()
+      .references(() => sourceSnapshots.id),
+    rawContentHash: text("raw_content_hash").notNull(),
+    textHash: text("text_hash").notNull(),
+    extractorConfigHash: text("extractor_config_hash").notNull(),
+    inputSchemaVersion: text("input_schema_version").notNull(),
+    blockManifestJson: text("block_manifest_json").notNull(),
+    blockManifestHash: text("block_manifest_hash").notNull(),
+    associationBasisJson: text("association_basis_json").notNull(),
+    associationBasisHash: text("association_basis_hash").notNull(),
+    collectionReasonHash: text("collection_reason_hash").notNull(),
+    collectionRulesetId: text("collection_ruleset_id").notNull(),
+    collectionRoute: text("collection_route").notNull(),
+    createdByAuditEventId: text("created_by_audit_event_id")
+      .notNull()
+      .references(() => auditEvents.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_machine_analysis_input_identity").on(
+      table.documentCaptureId,
+      table.blockManifestHash,
+      table.associationBasisHash,
+      table.inputSchemaVersion,
+    ),
+    index("idx_machine_analysis_inputs_source_version").on(
+      table.sourceItemId,
+      table.sourceItemVersionId,
+    ),
+    index("idx_machine_analysis_inputs_audit").on(table.createdByAuditEventId),
+    check(
+      "machine_analysis_inputs_route_check",
+      sql`${table.collectionRoute} IN ('evidence-review', 'context-monitoring')`,
+    ),
+    check(
+      "machine_analysis_inputs_json_check",
+      sql`json_valid(${table.blockManifestJson}) AND json_valid(${table.associationBasisJson})`,
+    ),
+    check(
+      "machine_analysis_inputs_hashes_check",
+      sql`length(${table.rawContentHash}) = 64 AND ${table.rawContentHash} NOT GLOB '*[^0-9a-f]*'
+        AND length(${table.textHash}) = 64 AND ${table.textHash} NOT GLOB '*[^0-9a-f]*'
+        AND length(${table.extractorConfigHash}) = 64 AND ${table.extractorConfigHash} NOT GLOB '*[^0-9a-f]*'
+        AND length(${table.blockManifestHash}) = 64 AND ${table.blockManifestHash} NOT GLOB '*[^0-9a-f]*'
+        AND length(${table.associationBasisHash}) = 64 AND ${table.associationBasisHash} NOT GLOB '*[^0-9a-f]*'
+        AND length(${table.collectionReasonHash}) = 64 AND ${table.collectionReasonHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
+export const machineAnalysisResults = sqliteTable(
+  "machine_analysis_results",
+  {
+    id: text("id").primaryKey(),
+    inputId: text("input_id")
+      .notNull()
+      .references(() => machineAnalysisInputs.id),
+    resultVersion: integer("result_version").notNull(),
+    supersedesResultId: text("supersedes_result_id").references(
+      (): AnySQLiteColumn => machineAnalysisResults.id,
+    ),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    modelVersion: text("model_version").notNull(),
+    method: text("method").notNull(),
+    promptId: text("prompt_id").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    promptHash: text("prompt_hash").notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    resultJson: text("result_json").notNull(),
+    resultHash: text("result_hash").notNull(),
+    overallConfidence: real("overall_confidence").notNull(),
+    gateStatus: text("gate_status").notNull(),
+    gateCode: text("gate_code").notNull(),
+    machineLabel: text("machine_label").notNull(),
+    createdByAuditEventId: text("created_by_audit_event_id")
+      .notNull()
+      .references(() => auditEvents.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_machine_analysis_result_version").on(table.inputId, table.resultVersion),
+    uniqueIndex("idx_machine_analysis_result_superseded_once")
+      .on(table.supersedesResultId)
+      .where(sql`${table.supersedesResultId} IS NOT NULL`),
+    index("idx_machine_analysis_results_gate").on(table.gateStatus, table.createdAt),
+    index("idx_machine_analysis_results_audit").on(table.createdByAuditEventId),
+    check("machine_analysis_results_version_check", sql`${table.resultVersion} >= 1`),
+    check(
+      "machine_analysis_results_confidence_check",
+      sql`${table.overallConfidence} >= 0 AND ${table.overallConfidence} <= 1`,
+    ),
+    check(
+      "machine_analysis_results_gate_check",
+      sql`${table.gateStatus} IN ('eligible', 'held')`,
+    ),
+    check(
+      "machine_analysis_results_label_check",
+      sql`${table.machineLabel} IN ('automatic-extractive', 'ai-assisted-draft')`,
+    ),
+    check(
+      "machine_analysis_results_auto_gate_check",
+      sql`${table.gateStatus} != 'eligible' OR (${table.machineLabel} = 'automatic-extractive' AND ${table.method} = 'deterministic-extractive-v1')`,
+    ),
+    check("machine_analysis_results_json_check", sql`json_valid(${table.resultJson})`),
+    check(
+      "machine_analysis_results_hashes_check",
+      sql`length(${table.promptHash}) = 64 AND ${table.promptHash} NOT GLOB '*[^0-9a-f]*'
+        AND length(${table.resultHash}) = 64 AND ${table.resultHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
+export const machineAnalysisEntities = sqliteTable(
+  "machine_analysis_entities",
+  {
+    id: text("id").primaryKey(),
+    resultId: text("result_id")
+      .notNull()
+      .references(() => machineAnalysisResults.id),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    associationKind: text("association_kind").notNull(),
+    mentionText: text("mention_text").notNull(),
+    mentionHash: text("mention_hash").notNull(),
+    blockId: text("block_id").notNull(),
+    blockHash: text("block_hash").notNull(),
+    textStartOffset: integer("text_start_offset").notNull(),
+    textEndOffset: integer("text_end_offset").notNull(),
+    // These are the containing raw HTML block bounds. Normalisation can make
+    // them wider than the exact mention; only text offsets are quote-exact.
+    rawBlockStartOffset: integer("raw_start_offset").notNull(),
+    rawBlockEndOffset: integer("raw_end_offset").notNull(),
+    confidence: real("confidence").notNull(),
+    signalSource: text("signal_source").notNull(),
+    signalBasisHash: text("signal_basis_hash").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_machine_analysis_entity_span").on(
+      table.resultId,
+      table.entityType,
+      table.entityId,
+      table.blockId,
+      table.textStartOffset,
+      table.textEndOffset,
+    ),
+    index("idx_machine_analysis_entities_entity").on(table.entityType, table.entityId),
+    check(
+      "machine_analysis_entities_type_check",
+      sql`${table.entityType} IN ('candidacy', 'topic', 'constituency')`,
+    ),
+    check(
+      "machine_analysis_entities_kind_check",
+      sql`${table.associationKind} IN ('mentioned', 'subject', 'context')`,
+    ),
+    check(
+      "machine_analysis_entities_signal_check",
+      sql`${table.signalSource} IN ('collection-assessment', 'deterministic-text-match', 'item-entity-revalidated')`,
+    ),
+    check(
+      "machine_analysis_entities_offsets_check",
+      sql`${table.textStartOffset} >= 0 AND ${table.textEndOffset} > ${table.textStartOffset}
+        AND ${table.rawBlockStartOffset} >= 0 AND ${table.rawBlockEndOffset} > ${table.rawBlockStartOffset}`,
+    ),
+    check(
+      "machine_analysis_entities_confidence_check",
+      sql`${table.confidence} >= 0 AND ${table.confidence} <= 1`,
+    ),
+    check(
+      "machine_analysis_entities_hashes_check",
+      sql`length(${table.mentionHash}) = 64 AND ${table.mentionHash} NOT GLOB '*[^0-9a-f]*'
+        AND length(${table.blockHash}) = 64 AND ${table.blockHash} NOT GLOB '*[^0-9a-f]*'
+        AND length(${table.signalBasisHash}) = 64 AND ${table.signalBasisHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
+export const machineAnalysisFindings = sqliteTable(
+  "machine_analysis_findings",
+  {
+    id: text("id").primaryKey(),
+    resultId: text("result_id")
+      .notNull()
+      .references(() => machineAnalysisResults.id),
+    propositionKey: text("proposition_key").notNull(),
+    findingKind: text("finding_kind").notNull(),
+    candidacyId: text("candidacy_id").references(() => candidacies.id),
+    topicId: text("topic_id")
+      .notNull()
+      .references(() => policyTopics.id),
+    constituencyId: text("constituency_id").references(() => constituencies.id),
+    propositionText: text("proposition_text").notNull(),
+    stance: text("stance"),
+    stanceBasis: text("stance_basis").notNull().default("none"),
+    quote: text("quote").notNull(),
+    quoteHash: text("quote_hash").notNull(),
+    blockId: text("block_id").notNull(),
+    blockHash: text("block_hash").notNull(),
+    textStartOffset: integer("text_start_offset").notNull(),
+    textEndOffset: integer("text_end_offset").notNull(),
+    // Containing raw HTML block bounds, not byte-exact quote bounds.
+    rawBlockStartOffset: integer("raw_start_offset").notNull(),
+    rawBlockEndOffset: integer("raw_end_offset").notNull(),
+    confidence: real("confidence").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_machine_analysis_finding_proposition").on(
+      table.resultId,
+      table.propositionKey,
+    ),
+    index("idx_machine_analysis_findings_candidate_topic").on(
+      table.candidacyId,
+      table.topicId,
+    ),
+    check(
+      "machine_analysis_findings_kind_check",
+      sql`${table.findingKind} IN ('reported-passage', 'explicit-statement', 'policy-proposal', 'record-fact')`,
+    ),
+    check(
+      "machine_analysis_findings_stance_check",
+      sql`(${table.stance} IS NULL AND ${table.stanceBasis} = 'none') OR (${table.stance} IN ('supports', 'opposes', 'mixed', 'conditional', 'unclear') AND ${table.stanceBasis} IN ('explicit-language', 'human-reviewed'))`,
+    ),
+    check(
+      "machine_analysis_findings_offsets_check",
+      sql`${table.textStartOffset} >= 0 AND ${table.textEndOffset} > ${table.textStartOffset}
+        AND ${table.rawBlockStartOffset} >= 0 AND ${table.rawBlockEndOffset} > ${table.rawBlockStartOffset}`,
+    ),
+    check(
+      "machine_analysis_findings_confidence_check",
+      sql`${table.confidence} >= 0 AND ${table.confidence} <= 1`,
+    ),
+    check(
+      "machine_analysis_findings_quote_check",
+      sql`length(${table.quote}) BETWEEN 1 AND 500 AND length(${table.propositionText}) BETWEEN 1 AND 600`,
+    ),
+    check(
+      "machine_analysis_findings_hashes_check",
+      sql`length(${table.quoteHash}) = 64 AND ${table.quoteHash} NOT GLOB '*[^0-9a-f]*'
+        AND length(${table.blockHash}) = 64 AND ${table.blockHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
+export const machineAnalysisJobs = sqliteTable(
+  "machine_analysis_jobs",
+  {
+    id: text("id").primaryKey(),
+    sourceItemId: text("source_item_id")
+      .notNull()
+      .references(() => sourceItems.id),
+    sourceItemVersionId: text("source_item_version_id")
+      .notNull()
+      .references(() => sourceItemVersions.id),
+    documentCaptureId: text("document_capture_id")
+      .notNull()
+      .references(() => sourceDocumentCaptures.id),
+    analyzerConfigHash: text("analyzer_config_hash").notNull(),
+    status: text("status").notNull().default("queued"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at"),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: text("lease_expires_at"),
+    resultId: text("result_id").references(() => machineAnalysisResults.id),
+    lastErrorCode: text("last_error_code"),
+    lastErrorSummary: text("last_error_summary"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_machine_analysis_job_identity").on(
+      table.documentCaptureId,
+      table.analyzerConfigHash,
+    ),
+    index("idx_machine_analysis_jobs_due").on(table.status, table.nextAttemptAt),
+    check(
+      "machine_analysis_jobs_status_check",
+      sql`${table.status} IN ('queued', 'running', 'retrying', 'succeeded', 'failed', 'quarantined')`,
+    ),
+    check("machine_analysis_jobs_attempt_check", sql`${table.attemptCount} >= 0`),
+    check(
+      "machine_analysis_jobs_lease_check",
+      sql`(${table.leaseToken} IS NULL AND ${table.leaseExpiresAt} IS NULL) OR (${table.leaseToken} IS NOT NULL AND ${table.leaseExpiresAt} IS NOT NULL)`,
+    ),
+    check(
+      "machine_analysis_jobs_result_check",
+      sql`${table.status} != 'succeeded' OR ${table.resultId} IS NOT NULL`,
+    ),
+    check(
+      "machine_analysis_jobs_config_hash_check",
+      sql`length(${table.analyzerConfigHash}) = 64 AND ${table.analyzerConfigHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
+export const machineAnalysisHeads = sqliteTable(
+  "machine_analysis_heads",
+  {
+    sourceItemId: text("source_item_id")
+      .primaryKey()
+      .references(() => sourceItems.id, { onDelete: "cascade" }),
+    currentInputId: text("current_input_id")
+      .notNull()
+      .references(() => machineAnalysisInputs.id),
+    latestResultId: text("latest_result_id")
+      .notNull()
+      .references(() => machineAnalysisResults.id),
+    publishedResultId: text("published_result_id").references(() => machineAnalysisResults.id),
+    analysisState: text("analysis_state").notNull(),
+    publicationState: text("publication_state").notNull(),
+    updatedByAuditEventId: text("updated_by_audit_event_id")
+      .notNull()
+      .references(() => auditEvents.id),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_machine_analysis_heads_state").on(table.analysisState, table.updatedAt),
+    index("idx_machine_analysis_heads_publication").on(
+      table.publicationState,
+      table.updatedAt,
+    ),
+    check(
+      "machine_analysis_heads_analysis_check",
+      sql`${table.analysisState} IN ('queued', 'ready', 'held', 'failed', 'stale')`,
+    ),
+    check(
+      "machine_analysis_heads_publication_check",
+      sql`${table.publicationState} IN ('private', 'published', 'withheld')`,
+    ),
+    check(
+      "machine_analysis_heads_publish_check",
+      sql`${table.publicationState} != 'published' OR (${table.analysisState} = 'ready' AND ${table.publishedResultId} IS NOT NULL AND ${table.publishedResultId} = ${table.latestResultId})`,
+    ),
+  ],
+);
+
+export const machineAnalysisVerifications = sqliteTable(
+  "machine_analysis_verifications",
+  {
+    id: text("id").primaryKey(),
+    resultId: text("result_id")
+      .notNull()
+      .references(() => machineAnalysisResults.id),
+    reviewId: text("review_id")
+      .notNull()
+      .references(() => reviews.id),
+    verifierId: text("verifier_id").notNull(),
+    rationale: text("rationale").notNull(),
+    rationaleHash: text("rationale_hash").notNull(),
+    createdByAuditEventId: text("created_by_audit_event_id")
+      .notNull()
+      .references(() => auditEvents.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_machine_analysis_verification_review").on(table.reviewId),
+    index("idx_machine_analysis_verifications_result").on(table.resultId, table.createdAt),
+    check(
+      "machine_analysis_verifications_rationale_check",
+      sql`length(trim(${table.rationale})) BETWEEN 8 AND 2000`,
+    ),
+    check(
+      "machine_analysis_verifications_hash_check",
+      sql`length(${table.rationaleHash}) = 64 AND ${table.rationaleHash} NOT GLOB '*[^0-9a-f]*'`,
     ),
   ],
 );

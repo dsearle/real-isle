@@ -1,0 +1,133 @@
+.panel { color: #123238; display: grid; gap: 20px; }
+
+.intro {
+  align-items: end;
+  background: #fffdf7;
+  border: 1px solid rgba(18, 50, 56, .16);
+  border-radius: 12px;
+  display: grid;
+  gap: 36px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr);
+  padding: 28px;
+}
+
+.intro span { color: #0d6970; font-size: 12px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
+.intro h2 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(30px, 4vw, 49px); font-weight: 500; letter-spacing: -.045em; line-height: 1.02; margin: 8px 0 0; }
+.intro p { color: #526669; font-size: 12px; line-height: 1.65; margin: 0; }
+
+.viewSwitch { background: #123238; border-radius: 10px; display: grid; gap: 6px; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 6px; }
+.viewSwitch button { background: transparent; border: 0; border-radius: 7px; color: rgba(255, 253, 247, .72); cursor: pointer; font: 800 12px/1.2 ui-sans-serif, system-ui, sans-serif; min-height: 46px; }
+.viewSwitch button[aria-pressed="true"] { background: #fffdf7; color: #123238; }
+.viewSwitch strong { background: #f0cd68; border-radius: 999px; color: #123238; margin-left: 8px; padding: 4px 7px; }
+
+.statusBar { display: grid; gap: 9px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.statusBar button { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .2); border-radius: 10px; color: #123238; cursor: pointer; display: grid; gap: 4px; grid-template-columns: 1fr auto; min-height: 88px; padding: 13px; text-align: left; }
+.statusBar button[aria-pressed="true"] { background: #e6eee8; border-color: #24694f; box-shadow: inset 0 3px 0 #24694f; }
+.statusBar span { font-size: 12px; font-weight: 900; }
+.statusBar strong { color: #0d6970; font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; }
+.statusBar small { color: #526669; font-size: 12px; grid-column: 1 / 3; line-height: 1.35; }
+
+.analysisGrid,
+.queueGrid { display: grid; gap: 13px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.analysisCard,
+.queueCard { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .18); border-radius: 11px; min-width: 0; padding: 19px; }
+.cardHeading { align-items: start; display: flex; gap: 15px; justify-content: space-between; }
+.cardHeading > div { display: grid; gap: 5px; }
+.cardHeading span { background: #f2d78b; border-radius: 999px; color: #5b431e; font-size: 12px; font-weight: 900; padding: 6px 8px; text-transform: uppercase; width: fit-content; }
+.cardHeading span[data-status="human-verified"] { background: #d9eee0; color: #205b42; }
+.cardHeading span[data-status="disputed"] { background: #f5d5ca; color: #7d3928; }
+.cardHeading span[data-status="withdrawn"] { background: #dde4e3; color: #405456; }
+.cardHeading small { color: #526669; font-size: 12px; line-height: 1.4; }
+.cardHeading > strong { color: #0d6970; font-family: Georgia, "Times New Roman", serif; font-size: 25px; font-weight: 500; text-align: right; }
+.cardHeading > strong small { display: block; font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; max-width: 130px; }
+.sourceLabel { color: #0d6970; font-size: 12px; font-weight: 850; margin: 16px 0 7px; text-transform: uppercase; }
+.analysisCard h3,
+.queueCard h3 { font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; line-height: 1.15; margin: 0 0 11px; }
+.cardCounts { display: flex; flex-wrap: wrap; gap: 6px; }
+.cardCounts span { background: #edf1e9; border-radius: 999px; color: #3f5d60; font-size: 12px; padding: 5px 8px; }
+.findingList { display: grid; gap: 7px; list-style: none; margin: 14px 0; padding: 0; }
+.findingList li { background: #f4f0e7; border-radius: 8px; padding: 10px; }
+.findingList p { font-size: 12px; line-height: 1.5; margin: 0 0 5px; }
+.findingList small { color: #526669; font-size: 12px; line-height: 1.4; text-transform: capitalize; }
+
+.adminCitations,
+.adminProvenance { border-top: 1px solid rgba(18, 50, 56, .15); padding: 12px 0; }
+.adminCitations summary,
+.adminProvenance summary { color: #0d6970; cursor: pointer; font-size: 12px; font-weight: 850; }
+.adminCitations ol { display: grid; gap: 8px; list-style: none; margin: 10px 0 0; padding: 0; }
+.adminCitations li { background: #f4f0e7; border-radius: 8px; display: grid; gap: 6px; padding: 10px; }
+.adminCitations strong { font-size: 12px; }
+.adminCitations small,
+.adminCitations p,
+.adminCitations code { color: #526669; font-size: 12px; line-height: 1.45; margin: 0; overflow-wrap: anywhere; }
+.adminCitations blockquote { border-left: 3px solid #a87134; font-family: Georgia, "Times New Roman", serif; font-size: 14px; line-height: 1.5; margin: 2px 0; padding: 7px 9px; }
+.adminCitations a { color: #0d6970; font-size: 12px; font-weight: 850; }
+.adminProvenance dl { display: grid; gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 10px 0 0; }
+.adminProvenance dl > div { border-top: 1px solid rgba(18, 50, 56, .12); display: grid; gap: 3px; padding-top: 6px; }
+.adminProvenance dt { color: #526669; font-size: 12px; text-transform: uppercase; }
+.adminProvenance dd { font-size: 12px; margin: 0; overflow-wrap: anywhere; }
+
+.reviewControls { border-top: 1px solid rgba(18, 50, 56, .15); padding-top: 13px; }
+.actionButtons { display: flex; flex-wrap: wrap; gap: 7px; }
+.actionButtons button,
+.reviewControls form button { border-radius: 8px; cursor: pointer; font: 800 12px/1 ui-sans-serif, system-ui, sans-serif; min-height: 42px; padding: 10px 13px; }
+.actionButtons button { background: #fffdf7; border: 1px solid #0d6970; color: #0d6970; }
+.actionButtons button[data-action="withdraw"],
+.actionButtons button[data-action="dispute"] { border-color: #a84f3d; color: #8f3e2f; }
+.reviewControls form { background: #f3eee4; border-radius: 9px; margin-top: 10px; padding: 13px; }
+.reviewControls fieldset { border: 0; margin: 0; padding: 0; }
+.reviewControls legend { font-family: Georgia, "Times New Roman", serif; font-size: 17px; font-weight: 600; }
+.reviewControls fieldset > p { color: #526669; font-size: 12px; line-height: 1.5; }
+.reviewControls label { display: grid; gap: 5px; }
+.reviewControls label span { font-size: 12px; font-weight: 850; text-transform: uppercase; }
+.reviewControls textarea { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .3); border-radius: 7px; color: #123238; font: 500 12px/1.5 ui-sans-serif, system-ui, sans-serif; min-height: 88px; padding: 9px; resize: vertical; }
+.reviewControls fieldset > small { color: #526669; display: block; font-size: 12px; margin: 4px 0 9px; text-align: right; }
+.reviewControls fieldset > div { display: flex; gap: 7px; }
+.reviewControls form button[type="submit"] { background: #24694f; border: 1px solid #24694f; color: #fffdf7; }
+.reviewControls form button[type="button"] { background: transparent; border: 1px solid rgba(18, 50, 56, .3); color: #37565a; }
+.decisionError { background: #f7e4de; border-left: 3px solid #a84f3d; color: #773427; font-size: 12px; padding: 8px; }
+.decisionReceipt { border-left: 3px solid #24694f; display: grid; gap: 4px; padding-left: 10px; }
+.decisionReceipt strong { font-size: 12px; }
+.decisionReceipt span,
+.decisionReceipt code { color: #526669; font-size: 12px; }
+
+.queueCard > div:first-child { align-items: center; display: flex; justify-content: space-between; }
+.queueCard > div:first-child span { background: #e9dfca; border-radius: 999px; font-size: 12px; font-weight: 850; padding: 6px 8px; text-transform: capitalize; }
+.queueCard > div:first-child span[data-warning="true"] { background: #f5d5ca; color: #7d3928; }
+.queueCard > div:first-child small,
+.queueCard > p { color: #526669; font-size: 12px; }
+.queueCard h3 { margin-top: 14px; }
+.queueCard dl { display: grid; gap: 7px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.queueCard dl > div { border-top: 1px solid rgba(18, 50, 56, .12); display: grid; gap: 3px; padding-top: 7px; }
+.queueCard dt { color: #526669; font-size: 12px; text-transform: uppercase; }
+.queueCard dd { font-size: 12px; margin: 0; }
+.queueCard > code { color: #526669; display: block; font-size: 12px; margin-top: 6px; overflow-wrap: anywhere; }
+.queueFailure { background: #f7e4de; border-radius: 8px; color: #71392f; margin-top: 12px; padding: 10px; }
+.queueFailure strong { font-size: 12px; }
+.queueFailure p { font-size: 12px; line-height: 1.5; margin: 4px 0 0; }
+
+.empty { background: #fffdf7; border: 1px dashed rgba(18, 50, 56, .3); border-radius: 11px; display: grid; gap: 6px; padding: 30px; text-align: center; }
+.empty strong { font-family: Georgia, "Times New Roman", serif; font-size: 22px; font-weight: 500; }
+.empty span { color: #526669; font-size: 12px; }
+
+@media (max-width: 900px) {
+  .intro { grid-template-columns: 1fr; }
+  .statusBar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analysisGrid,
+  .queueGrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 540px) {
+  .intro { padding: 20px; }
+  .viewSwitch,
+  .statusBar { grid-template-columns: 1fr; }
+  .cardHeading { align-items: flex-start; flex-direction: column; }
+  .cardHeading > strong { text-align: left; }
+  .adminProvenance dl,
+  .queueCard dl { grid-template-columns: 1fr; }
+  .actionButtons,
+  .reviewControls fieldset > div { flex-direction: column; }
+  .actionButtons button,
+  .reviewControls form button { width: 100%; }
+}

@@ -21,9 +21,40 @@ positions and summaries must link to their supporting source records.
    triggers, installed by forward migrations and checked idempotently by the
    evidence service, protect source captures, versions, decisions and
    revisions from being rewritten in place.
-6. New records enter the admin review inbox. Only an explicit review decision
-   can make derived civic information public; later corrections create a new
-   revision rather than erasing history.
+6. New records enter the admin review inbox. Editorial evidence needs an
+   explicit review decision before it can make derived civic information public;
+   later corrections create a new revision rather than erasing history.
+
+### Automatic library analysis
+
+The existing library is also processed progressively, not just material found
+after launch. Each normal scheduler run first freezes a bounded batch of legacy
+versions into the immutable relevance ledger. It then takes a small fair
+rotation of already-assessed pages whose publisher has explicitly allowed
+controlled HTML collection. This means older material gradually receives the
+same candidate, constituency and topic filing as new material without a bulk
+rewrite of its history.
+
+The automatic lane is deliberately narrower than editorial approval:
+
+- It respects the source's active/rights policy, exact HTTPS host allowlist,
+  robots rules, crawl delay, response-size limit and access barriers.
+- Full article bodies remain transient. The system keeps only the permitted
+  metadata, hashes, bounded extract and block/offset manifest required to prove
+  a citation.
+- A deterministic extractor records exact source passages linked to controlled
+  policy topics. It can record a candidate mention only when there is one
+  unambiguous, separately approved public candidate identity. A mention never
+  becomes a candidate stance.
+- Ambiguous candidate references, broad captures, unpublished identities,
+  paywalls, unsupported documents, failed rights checks and stale versions are
+  held or quarantined rather than published.
+
+Any automatic output is labelled **Machine analysed — not checked by a person**.
+It is a traceable source passage and association, not a finding of fact or a
+candidate rating. An authorised reviewer can later verify, withdraw or restore
+that immutable output through a new audited decision. Candidate-platform
+summaries remain human-reviewed, proposition-level revisions.
 
 Each Evidence Inbox decision is attached to the source item's current immutable
 version and content hash. Approving a version publishes only its reviewed
