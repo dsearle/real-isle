@@ -1,8 +1,8 @@
 export const sourceItemVersionEntityInsertGuardSql = `CREATE TRIGGER IF NOT EXISTS source_item_version_entities_insert_guard
    BEFORE INSERT ON source_item_version_entities
    BEGIN
-     SELECT CASE
-       WHEN NOT EXISTS (
+     SELECT RAISE(ABORT, 'entity projection requires a current approved source version')
+      WHERE NOT EXISTS (
          SELECT 1
            FROM source_item_versions versions
            JOIN source_items items ON items.id = versions.source_item_id
@@ -44,38 +44,28 @@ export const sourceItemVersionEntityInsertGuardSql = `CREATE TRIGGER IF NOT EXIS
                 )
               )
             )
-       )
-       THEN RAISE(ABORT, 'entity projection requires a current approved source version')
-     END;
-     SELECT CASE
-       WHEN NEW.entity_type NOT IN ('candidacy', 'topic', 'constituency')
-       THEN RAISE(ABORT, 'entity projection type is not supported')
-     END;
-     SELECT CASE
-       WHEN NEW.entity_type = 'candidacy'
+       );
+     SELECT RAISE(ABORT, 'entity projection type is not supported')
+      WHERE NEW.entity_type NOT IN ('candidacy', 'topic', 'constituency');
+     SELECT RAISE(ABORT, 'entity projection candidacy is not current')
+      WHERE NEW.entity_type = 'candidacy'
         AND NOT EXISTS (
           SELECT 1 FROM candidacies
            WHERE id = NEW.entity_id
              AND declaration_status != 'source-removed'
-        )
-       THEN RAISE(ABORT, 'entity projection candidacy is not current')
-     END;
-     SELECT CASE
-       WHEN NEW.entity_type = 'topic'
+        );
+     SELECT RAISE(ABORT, 'entity projection topic is not current')
+      WHERE NEW.entity_type = 'topic'
         AND NOT EXISTS (
           SELECT 1 FROM policy_topics
            WHERE id = NEW.entity_id
-        )
-       THEN RAISE(ABORT, 'entity projection topic is not current')
-     END;
-     SELECT CASE
-       WHEN NEW.entity_type = 'constituency'
+        );
+     SELECT RAISE(ABORT, 'entity projection constituency is not current')
+      WHERE NEW.entity_type = 'constituency'
         AND NOT EXISTS (
           SELECT 1 FROM constituencies
            WHERE id = NEW.entity_id
-        )
-       THEN RAISE(ABORT, 'entity projection constituency is not current')
-     END;
+        );
    END`;
 
 export const sourceItemVersionEntityNoUpdateSql = `CREATE TRIGGER IF NOT EXISTS source_item_version_entities_no_update
@@ -117,18 +107,16 @@ export const candidateIntelligenceInvalidationSql = `CREATE TRIGGER IF NOT EXIST
 export const candidateIntelligenceRevisionInsertGuardSql = `CREATE TRIGGER IF NOT EXISTS candidate_intelligence_revision_insert_guard
    BEFORE INSERT ON candidate_intelligence_heads
    BEGIN
-     SELECT CASE
-       WHEN NEW.latest_revision_id IS NOT NULL
+     SELECT RAISE(ABORT, 'latest candidate intelligence revision does not match candidacy')
+      WHERE NEW.latest_revision_id IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM revisions
            WHERE id = NEW.latest_revision_id
              AND entity_type = 'candidate-analysis'
              AND entity_id = NEW.candidacy_id
-        )
-       THEN RAISE(ABORT, 'latest candidate intelligence revision does not match candidacy')
-     END;
-     SELECT CASE
-       WHEN NEW.published_revision_id IS NOT NULL
+        );
+     SELECT RAISE(ABORT, 'published candidate intelligence revision requires an audited approval')
+      WHERE NEW.published_revision_id IS NOT NULL
         AND NOT EXISTS (
           SELECT 1
             FROM revisions
@@ -148,19 +136,15 @@ export const candidateIntelligenceRevisionInsertGuardSql = `CREATE TRIGGER IF NO
            WHERE revisions.id = NEW.published_revision_id
              AND revisions.entity_type = 'candidate-analysis'
              AND revisions.entity_id = NEW.candidacy_id
-        )
-       THEN RAISE(ABORT, 'published candidate intelligence revision requires an audited approval')
-     END;
-     SELECT CASE
-       WHEN NEW.publication_state = 'published'
+        );
+     SELECT RAISE(ABORT, 'published candidate intelligence must be current and approved')
+      WHERE NEW.publication_state = 'published'
         AND (
           NEW.analysis_state != 'approved'
           OR NEW.stale_at IS NOT NULL
           OR NEW.published_revision_id IS NULL
           OR NEW.latest_revision_id IS NOT NEW.published_revision_id
-        )
-       THEN RAISE(ABORT, 'published candidate intelligence must be current and approved')
-     END;
+        );
    END`;
 
 export const candidateIntelligenceRevisionUpdateGuardSql = `CREATE TRIGGER IF NOT EXISTS candidate_intelligence_revision_update_guard
@@ -168,18 +152,16 @@ export const candidateIntelligenceRevisionUpdateGuardSql = `CREATE TRIGGER IF NO
      analysis_state, publication_state, stale_at
    ON candidate_intelligence_heads
    BEGIN
-     SELECT CASE
-       WHEN NEW.latest_revision_id IS NOT NULL
+     SELECT RAISE(ABORT, 'latest candidate intelligence revision does not match candidacy')
+      WHERE NEW.latest_revision_id IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM revisions
            WHERE id = NEW.latest_revision_id
              AND entity_type = 'candidate-analysis'
              AND entity_id = NEW.candidacy_id
-        )
-       THEN RAISE(ABORT, 'latest candidate intelligence revision does not match candidacy')
-     END;
-     SELECT CASE
-       WHEN NEW.published_revision_id IS NOT NULL
+        );
+     SELECT RAISE(ABORT, 'published candidate intelligence revision requires an audited approval')
+      WHERE NEW.published_revision_id IS NOT NULL
         AND NOT EXISTS (
           SELECT 1
             FROM revisions
@@ -199,11 +181,9 @@ export const candidateIntelligenceRevisionUpdateGuardSql = `CREATE TRIGGER IF NO
            WHERE revisions.id = NEW.published_revision_id
              AND revisions.entity_type = 'candidate-analysis'
              AND revisions.entity_id = NEW.candidacy_id
-        )
-       THEN RAISE(ABORT, 'published candidate intelligence revision requires an audited approval')
-     END;
-     SELECT CASE
-       WHEN OLD.stale_at IS NOT NULL
+        );
+     SELECT RAISE(ABORT, 'stale candidate intelligence requires a newly approved revision')
+      WHERE OLD.stale_at IS NOT NULL
         AND NEW.stale_at IS NULL
         AND NOT EXISTS (
           SELECT 1
@@ -225,17 +205,13 @@ export const candidateIntelligenceRevisionUpdateGuardSql = `CREATE TRIGGER IF NO
              AND revisions.id IS NOT OLD.latest_revision_id
              AND revisions.entity_type = 'candidate-analysis'
              AND revisions.entity_id = NEW.candidacy_id
-        )
-       THEN RAISE(ABORT, 'stale candidate intelligence requires a newly approved revision')
-     END;
-     SELECT CASE
-       WHEN NEW.publication_state = 'published'
+        );
+     SELECT RAISE(ABORT, 'published candidate intelligence must be current and approved')
+      WHERE NEW.publication_state = 'published'
         AND (
           NEW.analysis_state != 'approved'
           OR NEW.stale_at IS NOT NULL
           OR NEW.published_revision_id IS NULL
           OR NEW.latest_revision_id IS NOT NEW.published_revision_id
-        )
-       THEN RAISE(ABORT, 'published candidate intelligence must be current and approved')
-     END;
+        );
    END`;

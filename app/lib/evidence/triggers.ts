@@ -21,14 +21,10 @@ const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS audit_event_chain_guard
    BEFORE INSERT ON audit_events
    BEGIN
-     SELECT CASE
-       WHEN NEW.sequence != (SELECT next_sequence FROM audit_chain_head WHERE chain_id = 1)
-       THEN RAISE(ABORT, 'audit sequence mismatch')
-     END;
-     SELECT CASE
-       WHEN NEW.previous_event_hash IS NOT (SELECT last_event_hash FROM audit_chain_head WHERE chain_id = 1)
-       THEN RAISE(ABORT, 'audit previous hash mismatch')
-     END;
+     SELECT RAISE(ABORT, 'audit sequence mismatch')
+      WHERE NEW.sequence != (SELECT next_sequence FROM audit_chain_head WHERE chain_id = 1);
+     SELECT RAISE(ABORT, 'audit previous hash mismatch')
+      WHERE NEW.previous_event_hash IS NOT (SELECT last_event_hash FROM audit_chain_head WHERE chain_id = 1);
    END`,
   `CREATE TRIGGER IF NOT EXISTS audit_event_chain_advance
    AFTER INSERT ON audit_events
@@ -83,16 +79,12 @@ const evidenceTriggerSql = [
   `CREATE TRIGGER reviews_supersession_guard
    BEFORE INSERT ON reviews
    BEGIN
-     SELECT CASE
-       WHEN NEW.decision NOT IN ('approved', 'rejected')
-       THEN RAISE(ABORT, 'invalid editorial decision')
-     END;
-     SELECT CASE
-       WHEN NEW.supersedes_review_id = NEW.id
-       THEN RAISE(ABORT, 'a review cannot supersede itself')
-     END;
-     SELECT CASE
-       WHEN NEW.supersedes_review_id IS NOT NULL
+     SELECT RAISE(ABORT, 'invalid editorial decision')
+      WHERE NEW.decision NOT IN ('approved', 'rejected');
+     SELECT RAISE(ABORT, 'a review cannot supersede itself')
+      WHERE NEW.supersedes_review_id = NEW.id;
+     SELECT RAISE(ABORT, 'review supersession target is stale or invalid')
+      WHERE NEW.supersedes_review_id IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM reviews prior_review
            WHERE prior_review.id = NEW.supersedes_review_id
@@ -101,11 +93,9 @@ const evidenceTriggerSql = [
              AND prior_review.decision != NEW.decision
              AND NOT EXISTS (
                SELECT 1 FROM reviews successor
-                WHERE successor.supersedes_review_id = prior_review.id
+               WHERE successor.supersedes_review_id = prior_review.id
              )
-        )
-       THEN RAISE(ABORT, 'review supersession target is stale or invalid')
-     END;
+        );
    END`,
   `DROP TRIGGER IF EXISTS reviews_source_item_version_guard`,
   `DROP TRIGGER IF EXISTS reviews_source_item_candidate_assignment_guard`,
@@ -131,7 +121,7 @@ const evidenceTriggerSql = [
      config_hash, content_hash, storage_key, word_count, duration_seconds,
      segment_count, generated_at, created_at
    ON transcripts
-   BEGIN SELECT RAISE(ABORT, 'transcript content is immutable; create a revision'); END`,
+   BEGIN SELECT RAISE(ABORT, 'transcript content is immutable, create a revision'); END`,
   `CREATE TRIGGER IF NOT EXISTS transcripts_candidate_guard
    BEFORE INSERT ON transcripts
    WHEN NEW.candidacy_id IS NOT (

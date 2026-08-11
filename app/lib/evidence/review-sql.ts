@@ -2,12 +2,10 @@ export const sourceItemVersionReviewGuardSql = `CREATE TRIGGER IF NOT EXISTS rev
    BEFORE INSERT ON reviews
    WHEN NEW.target_type = 'source-item-version'
    BEGIN
-     SELECT CASE
-       WHEN NEW.decision NOT IN ('approved', 'rejected')
-       THEN RAISE(ABORT, 'invalid source item review decision')
-     END;
-     SELECT CASE
-       WHEN NOT EXISTS (
+     SELECT RAISE(ABORT, 'invalid source item review decision')
+      WHERE NEW.decision NOT IN ('approved', 'rejected');
+     SELECT RAISE(ABORT, 'review target is stale or decision head changed')
+      WHERE NOT EXISTS (
          SELECT 1
            FROM source_item_versions versions
            JOIN source_items items ON items.id = versions.source_item_id
@@ -41,21 +39,17 @@ export const sourceItemVersionReviewGuardSql = `CREATE TRIGGER IF NOT EXISTS rev
                 )
               )
             )
-       )
-       THEN RAISE(ABORT, 'review target is stale or decision head changed')
-     END;
+       );
    END`;
 
 export const sourceItemCandidateAssignmentReviewGuardSql = `CREATE TRIGGER IF NOT EXISTS reviews_source_item_candidate_assignment_guard
    BEFORE INSERT ON reviews
    WHEN NEW.target_type = 'source-item-version-assignment'
    BEGIN
-     SELECT CASE
-       WHEN NEW.decision NOT IN ('approved', 'rejected')
-       THEN RAISE(ABORT, 'invalid candidate assignment decision')
-     END;
-     SELECT CASE
-       WHEN NOT EXISTS (
+     SELECT RAISE(ABORT, 'invalid candidate assignment decision')
+      WHERE NEW.decision NOT IN ('approved', 'rejected');
+     SELECT RAISE(ABORT, 'candidate assignment target is stale or decision head changed')
+      WHERE NOT EXISTS (
          SELECT 1
            FROM source_item_versions versions
            JOIN source_items items ON items.id = versions.source_item_id
@@ -105,9 +99,7 @@ export const sourceItemCandidateAssignmentReviewGuardSql = `CREATE TRIGGER IF NO
                 )
               )
             )
-       )
-       THEN RAISE(ABORT, 'candidate assignment target is stale or decision head changed')
-     END;
+       );
    END`;
 
 export const insertSourceItemReviewSql = `INSERT INTO reviews (

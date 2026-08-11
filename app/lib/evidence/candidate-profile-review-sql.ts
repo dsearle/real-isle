@@ -2,8 +2,8 @@ export const candidateProfileVersionReviewGuardSql = `CREATE TRIGGER IF NOT EXIS
   BEFORE INSERT ON reviews
   WHEN NEW.target_type = 'candidate-profile-version'
   BEGIN
-    SELECT CASE
-      WHEN NOT EXISTS (
+    SELECT RAISE(ABORT, 'candidate profile review target is stale or decision head changed')
+     WHERE NOT EXISTS (
         SELECT 1
           FROM candidate_profiles profiles
           JOIN candidacies ON candidacies.id = profiles.candidacy_id
@@ -36,9 +36,7 @@ export const candidateProfileVersionReviewGuardSql = `CREATE TRIGGER IF NOT EXIS
                )
              )
            )
-      )
-      THEN RAISE(ABORT, 'candidate profile review target is stale or decision head changed')
-    END;
+      );
   END`;
 
 export const insertCandidateProfileReviewSql = `INSERT INTO reviews (

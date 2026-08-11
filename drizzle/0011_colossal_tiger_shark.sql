@@ -61,16 +61,12 @@ BEGIN SELECT RAISE(ABORT, 'review decisions are immutable'); END;--> statement-b
 CREATE TRIGGER `reviews_supersession_guard`
 BEFORE INSERT ON `reviews`
 BEGIN
-  SELECT CASE
-    WHEN NEW.decision NOT IN ('approved', 'rejected')
-    THEN RAISE(ABORT, 'invalid editorial decision')
-  END;
-  SELECT CASE
-    WHEN NEW.supersedes_review_id = NEW.id
-    THEN RAISE(ABORT, 'a review cannot supersede itself')
-  END;
-  SELECT CASE
-    WHEN NEW.supersedes_review_id IS NOT NULL
+  SELECT RAISE(ABORT, 'invalid editorial decision')
+   WHERE NEW.decision NOT IN ('approved', 'rejected');
+  SELECT RAISE(ABORT, 'a review cannot supersede itself')
+   WHERE NEW.supersedes_review_id = NEW.id;
+  SELECT RAISE(ABORT, 'review supersession target is stale or invalid')
+   WHERE NEW.supersedes_review_id IS NOT NULL
      AND NOT EXISTS (
        SELECT 1 FROM reviews prior_review
         WHERE prior_review.id = NEW.supersedes_review_id
@@ -81,20 +77,16 @@ BEGIN
             SELECT 1 FROM reviews successor
              WHERE successor.supersedes_review_id = prior_review.id
           )
-     )
-    THEN RAISE(ABORT, 'review supersession target is stale or invalid')
-  END;
+     );
 END;--> statement-breakpoint
 CREATE TRIGGER `reviews_source_item_version_guard`
 BEFORE INSERT ON `reviews`
 WHEN NEW.target_type = 'source-item-version'
 BEGIN
-  SELECT CASE
-    WHEN NEW.decision NOT IN ('approved', 'rejected')
-    THEN RAISE(ABORT, 'invalid source item review decision')
-  END;
-  SELECT CASE
-    WHEN NOT EXISTS (
+  SELECT RAISE(ABORT, 'invalid source item review decision')
+   WHERE NEW.decision NOT IN ('approved', 'rejected');
+  SELECT RAISE(ABORT, 'review target is stale or decision head changed')
+   WHERE NOT EXISTS (
       SELECT 1
         FROM source_item_versions versions
         JOIN source_items items ON items.id = versions.source_item_id
@@ -128,20 +120,16 @@ BEGIN
              )
            )
          )
-    )
-    THEN RAISE(ABORT, 'review target is stale or decision head changed')
-  END;
+    );
 END;--> statement-breakpoint
 CREATE TRIGGER `reviews_source_item_candidate_assignment_guard`
 BEFORE INSERT ON `reviews`
 WHEN NEW.target_type = 'source-item-version-assignment'
 BEGIN
-  SELECT CASE
-    WHEN NEW.decision NOT IN ('approved', 'rejected')
-    THEN RAISE(ABORT, 'invalid candidate assignment decision')
-  END;
-  SELECT CASE
-    WHEN NOT EXISTS (
+  SELECT RAISE(ABORT, 'invalid candidate assignment decision')
+   WHERE NEW.decision NOT IN ('approved', 'rejected');
+  SELECT RAISE(ABORT, 'candidate assignment target is stale or decision head changed')
+   WHERE NOT EXISTS (
       SELECT 1
         FROM source_item_versions versions
         JOIN source_items items ON items.id = versions.source_item_id
@@ -191,15 +179,13 @@ BEGIN
              )
            )
          )
-    )
-    THEN RAISE(ABORT, 'candidate assignment target is stale or decision head changed')
-  END;
+    );
 END;--> statement-breakpoint
 CREATE TRIGGER `source_item_version_entities_insert_guard`
 BEFORE INSERT ON `source_item_version_entities`
 BEGIN
-  SELECT CASE
-    WHEN NOT EXISTS (
+  SELECT RAISE(ABORT, 'entity projection requires a current approved source version')
+   WHERE NOT EXISTS (
       SELECT 1
         FROM source_item_versions versions
         JOIN source_items items ON items.id = versions.source_item_id
@@ -241,36 +227,26 @@ BEGIN
              )
            )
          )
-    )
-    THEN RAISE(ABORT, 'entity projection requires a current approved source version')
-  END;
-  SELECT CASE
-    WHEN NEW.entity_type NOT IN ('candidacy', 'topic', 'constituency')
-    THEN RAISE(ABORT, 'entity projection type is not supported')
-  END;
-  SELECT CASE
-    WHEN NEW.entity_type = 'candidacy'
+    );
+  SELECT RAISE(ABORT, 'entity projection type is not supported')
+   WHERE NEW.entity_type NOT IN ('candidacy', 'topic', 'constituency');
+  SELECT RAISE(ABORT, 'entity projection candidacy is not current')
+   WHERE NEW.entity_type = 'candidacy'
      AND NOT EXISTS (
        SELECT 1 FROM candidacies
         WHERE id = NEW.entity_id
           AND declaration_status != 'source-removed'
-     )
-    THEN RAISE(ABORT, 'entity projection candidacy is not current')
-  END;
-  SELECT CASE
-    WHEN NEW.entity_type = 'topic'
+     );
+  SELECT RAISE(ABORT, 'entity projection topic is not current')
+   WHERE NEW.entity_type = 'topic'
      AND NOT EXISTS (
        SELECT 1 FROM policy_topics WHERE id = NEW.entity_id
-     )
-    THEN RAISE(ABORT, 'entity projection topic is not current')
-  END;
-  SELECT CASE
-    WHEN NEW.entity_type = 'constituency'
+     );
+  SELECT RAISE(ABORT, 'entity projection constituency is not current')
+   WHERE NEW.entity_type = 'constituency'
      AND NOT EXISTS (
        SELECT 1 FROM constituencies WHERE id = NEW.entity_id
-     )
-    THEN RAISE(ABORT, 'entity projection constituency is not current')
-  END;
+     );
 END;--> statement-breakpoint
 CREATE TRIGGER `source_item_version_entities_no_update`
 BEFORE UPDATE ON `source_item_version_entities`
@@ -308,18 +284,16 @@ END;--> statement-breakpoint
 CREATE TRIGGER `candidate_intelligence_revision_insert_guard`
 BEFORE INSERT ON `candidate_intelligence_heads`
 BEGIN
-  SELECT CASE
-    WHEN NEW.latest_revision_id IS NOT NULL
+  SELECT RAISE(ABORT, 'latest candidate intelligence revision does not match candidacy')
+   WHERE NEW.latest_revision_id IS NOT NULL
      AND NOT EXISTS (
        SELECT 1 FROM revisions
         WHERE id = NEW.latest_revision_id
           AND entity_type = 'candidate-analysis'
           AND entity_id = NEW.candidacy_id
-     )
-    THEN RAISE(ABORT, 'latest candidate intelligence revision does not match candidacy')
-  END;
-  SELECT CASE
-    WHEN NEW.published_revision_id IS NOT NULL
+     );
+  SELECT RAISE(ABORT, 'published candidate intelligence revision requires an audited approval')
+   WHERE NEW.published_revision_id IS NOT NULL
      AND NOT EXISTS (
        SELECT 1
          FROM revisions
@@ -339,37 +313,31 @@ BEGIN
         WHERE revisions.id = NEW.published_revision_id
           AND revisions.entity_type = 'candidate-analysis'
           AND revisions.entity_id = NEW.candidacy_id
-     )
-    THEN RAISE(ABORT, 'published candidate intelligence revision requires an audited approval')
-  END;
-  SELECT CASE
-    WHEN NEW.publication_state = 'published'
+     );
+  SELECT RAISE(ABORT, 'published candidate intelligence must be current and approved')
+   WHERE NEW.publication_state = 'published'
      AND (
        NEW.analysis_state != 'approved'
        OR NEW.stale_at IS NOT NULL
        OR NEW.published_revision_id IS NULL
        OR NEW.latest_revision_id IS NOT NEW.published_revision_id
-     )
-    THEN RAISE(ABORT, 'published candidate intelligence must be current and approved')
-  END;
+     );
 END;--> statement-breakpoint
 CREATE TRIGGER `candidate_intelligence_revision_update_guard`
 BEFORE UPDATE OF candidacy_id, latest_revision_id, published_revision_id,
   analysis_state, publication_state, stale_at
 ON `candidate_intelligence_heads`
 BEGIN
-  SELECT CASE
-    WHEN NEW.latest_revision_id IS NOT NULL
+  SELECT RAISE(ABORT, 'latest candidate intelligence revision does not match candidacy')
+   WHERE NEW.latest_revision_id IS NOT NULL
      AND NOT EXISTS (
        SELECT 1 FROM revisions
         WHERE id = NEW.latest_revision_id
           AND entity_type = 'candidate-analysis'
           AND entity_id = NEW.candidacy_id
-     )
-    THEN RAISE(ABORT, 'latest candidate intelligence revision does not match candidacy')
-  END;
-  SELECT CASE
-    WHEN NEW.published_revision_id IS NOT NULL
+     );
+  SELECT RAISE(ABORT, 'published candidate intelligence revision requires an audited approval')
+   WHERE NEW.published_revision_id IS NOT NULL
      AND NOT EXISTS (
        SELECT 1
          FROM revisions
@@ -389,11 +357,9 @@ BEGIN
         WHERE revisions.id = NEW.published_revision_id
           AND revisions.entity_type = 'candidate-analysis'
           AND revisions.entity_id = NEW.candidacy_id
-     )
-    THEN RAISE(ABORT, 'published candidate intelligence revision requires an audited approval')
-  END;
-  SELECT CASE
-    WHEN OLD.stale_at IS NOT NULL
+     );
+  SELECT RAISE(ABORT, 'stale candidate intelligence requires a newly approved revision')
+   WHERE OLD.stale_at IS NOT NULL
      AND NEW.stale_at IS NULL
      AND NOT EXISTS (
        SELECT 1
@@ -415,18 +381,14 @@ BEGIN
           AND revisions.id IS NOT OLD.latest_revision_id
           AND revisions.entity_type = 'candidate-analysis'
           AND revisions.entity_id = NEW.candidacy_id
-     )
-    THEN RAISE(ABORT, 'stale candidate intelligence requires a newly approved revision')
-  END;
-  SELECT CASE
-    WHEN NEW.publication_state = 'published'
+     );
+  SELECT RAISE(ABORT, 'published candidate intelligence must be current and approved')
+   WHERE NEW.publication_state = 'published'
      AND (
        NEW.analysis_state != 'approved'
        OR NEW.stale_at IS NOT NULL
        OR NEW.published_revision_id IS NULL
        OR NEW.latest_revision_id IS NOT NEW.published_revision_id
-     )
-    THEN RAISE(ABORT, 'published candidate intelligence must be current and approved')
-  END;
+     );
 END;--> statement-breakpoint
 PRAGMA foreign_key_check;

@@ -2,14 +2,10 @@ DROP TRIGGER IF EXISTS `audit_event_chain_guard`;--> statement-breakpoint
 CREATE TRIGGER `audit_event_chain_guard`
 BEFORE INSERT ON `audit_events`
 BEGIN
-  SELECT CASE
-    WHEN NEW.sequence != (SELECT next_sequence FROM audit_chain_head WHERE chain_id = 1)
-    THEN RAISE(ABORT, 'audit sequence mismatch')
-  END;
-  SELECT CASE
-    WHEN NEW.previous_event_hash IS NOT (SELECT last_event_hash FROM audit_chain_head WHERE chain_id = 1)
-    THEN RAISE(ABORT, 'audit previous hash mismatch')
-  END;
+  SELECT RAISE(ABORT, 'audit sequence mismatch')
+   WHERE NEW.sequence != (SELECT next_sequence FROM audit_chain_head WHERE chain_id = 1);
+  SELECT RAISE(ABORT, 'audit previous hash mismatch')
+   WHERE NEW.previous_event_hash IS NOT (SELECT last_event_hash FROM audit_chain_head WHERE chain_id = 1);
 END;--> statement-breakpoint
 DROP TRIGGER IF EXISTS `audit_event_chain_advance`;--> statement-breakpoint
 CREATE TRIGGER `audit_event_chain_advance`
@@ -76,7 +72,7 @@ BEFORE UPDATE OF job_id, revision_number, parent_transcript_id, candidacy_id,
   config_hash, content_hash, storage_key, word_count, duration_seconds,
   segment_count, generated_at, created_at
 ON `transcripts`
-BEGIN SELECT RAISE(ABORT, 'transcript content is immutable; create a revision'); END;--> statement-breakpoint
+BEGIN SELECT RAISE(ABORT, 'transcript content is immutable, create a revision'); END;--> statement-breakpoint
 DROP TRIGGER IF EXISTS `transcripts_candidate_guard`;--> statement-breakpoint
 CREATE TRIGGER `transcripts_candidate_guard`
 BEFORE INSERT ON `transcripts`

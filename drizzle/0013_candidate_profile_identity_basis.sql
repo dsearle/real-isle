@@ -85,8 +85,8 @@ CREATE TRIGGER `reviews_candidate_profile_version_guard`
 BEFORE INSERT ON `reviews`
 WHEN NEW.target_type = 'candidate-profile-version'
 BEGIN
-  SELECT CASE
-    WHEN NOT EXISTS (
+  SELECT RAISE(ABORT, 'candidate profile review target is stale or decision head changed')
+   WHERE NOT EXISTS (
       SELECT 1
         FROM candidate_profiles profiles
         JOIN candidacies ON candidacies.id = profiles.candidacy_id
@@ -119,8 +119,6 @@ BEGIN
              )
            )
          )
-    )
-    THEN RAISE(ABORT, 'candidate profile review target is stale or decision head changed')
-  END;
+    );
 END;--> statement-breakpoint
 PRAGMA foreign_key_check;
