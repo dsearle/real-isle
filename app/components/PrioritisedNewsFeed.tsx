@@ -107,6 +107,12 @@ export function PrioritisedNewsFeed({
         )}
       </div>
 
+      <div className={styles.curationNote}>
+        <span>Current briefing status</span>
+        <strong>Human-curated, not an automatic monitor feed.</strong>
+        <p>Source checks can discover new material, but those records do not appear here until a separate editorial publication decision is complete.</p>
+      </div>
+
       {selected ? (
         <>
           <FeedGroup
@@ -122,7 +128,7 @@ export function PrioritisedNewsFeed({
         </>
       ) : (
         <FeedGroup
-          eyebrow="All reviewed updates"
+          eyebrow="Curated reviewed updates"
           id="all-election-updates"
           updates={updates.toSorted(byNewest)}
         />

@@ -9,11 +9,15 @@ import {
   updates,
 } from "./lib/data";
 import { getPublishableCandidatePortraitsSafe } from "./lib/evidence/public-media";
+import { getPublicMonitorSnapshotSafe } from "./lib/evidence/public-monitor";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const publishablePortraits = await getPublishableCandidatePortraitsSafe();
+  const [publishablePortraits, monitorSnapshot] = await Promise.all([
+    getPublishableCandidatePortraitsSafe(),
+    getPublicMonitorSnapshotSafe(),
+  ]);
   const homeCandidates = candidates.flatMap((candidate) => {
     const constituency = constituencies.find((item) => item.name === candidate.constituency);
     if (!constituency) return [];
@@ -38,6 +42,7 @@ export default async function Home() {
         boundarySourceUrl={constituencyBoundarySource.url}
         candidates={homeCandidates}
         constituencies={constituencies}
+        monitorSnapshot={monitorSnapshot}
         updates={updates}
       />
 

@@ -32,6 +32,11 @@ test("server-renders The People’s Isle election hub", async () => {
   assert.match(html, /OUR ACTUAL ISLAND/);
   assert.match(html, /Representative points · boundaries not shown/);
   assert.match(html, /Official source/);
+  assert.match(html, /Research monitor/);
+  assert.match(html, /The source watch/);
+  assert.match(html, /Discovery is not publication/);
+  assert.match(html, /Configured for periodic checks/);
+  assert.match(html, /New records stay private until a human reviews them/);
   assert.match(html, /Open evidence profile for Claire Christian, Douglas South/);
   assert.match(html, /12/);
   assert.match(html, /constituencies/i);
@@ -67,4 +72,16 @@ test("server-renders the private compass", async () => {
   const html = await response.text();
   assert.match(html, /What do you want the next Keys to change/);
   assert.match(html, /Nothing is sent to The People’s Isle/);
+});
+
+test("server-renders the election desk with a separate public research monitor", async () => {
+  const response = await render("/latest");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /The election desk/);
+  assert.match(html, /The launch briefing is founder-curated and does not mirror the collection stream/);
+  assert.match(html, /Human-curated, not an automatic monitor feed/);
+  assert.match(html, /The source watch/);
+  assert.match(html, /Discovery is not publication/);
+  assert.doesNotMatch(html, /Unreviewed source stream|canonical_url|reviewer_id|snapshot_id/i);
 });

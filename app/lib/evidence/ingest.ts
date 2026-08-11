@@ -16,6 +16,7 @@ import {
 } from "./candidate-html";
 import { parseFeed, type NormalizedFeedItem } from "./feed";
 import { deterministicId, randomId, sha256Hex, stableJson } from "./integrity";
+import { rotateSourceIdsForWindow } from "./ingestion-scheduling";
 import { fetchBounded, type BoundedResponse } from "./network";
 import { seedEvidenceReferenceData } from "./seed";
 import { ensureEvidenceTriggers } from "./triggers";
@@ -2529,9 +2530,15 @@ export async function runEvidenceIngestion(
   await ensureEvidenceTriggers(bindings.DB);
   await seedEvidenceReferenceData(bindings.DB);
   const allowedSourceIds = new Set(command.sourceIds ?? monitoredSources.map((source) => source.id));
+  const sourceOrder = new Map(command.sourceIds?.map((sourceId, index) => [sourceId, index]) ?? []);
   const limit = Math.max(1, Math.min(command.limit ?? 2, 6));
   const sources = monitoredSources
-    .filter((source) => source.active && allowedSourceIds.has(source.id));
+    .filter((source) => source.active && allowedSourceIds.has(source.id))
+    .toSorted((left, right) => {
+      if (!command.sourceIds) return 0;
+      return (sourceOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER)
+        - (sourceOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER);
+    });
   const runs: SourceRunResult[] = [];
   let acquired = 0;
 
@@ -2564,12 +2571,20 @@ export async function runEvidenceIngestion(
   return { invocationId: command.idempotencyKey, runs };
 }
 
+export function trafficSourceIdsForWindow(tenMinuteWindow: number) {
+  const activeSourceIds = monitoredSources
+    .filter((source) => source.active)
+    .map((source) => source.id);
+  return rotateSourceIdsForWindow(activeSourceIds, tenMinuteWindow);
+}
+
 export async function runDueIngestion(bindings: EvidenceBindings) {
   const tenMinuteWindow = Math.floor(Date.now() / 600_000);
   return runEvidenceIngestion(bindings, {
     actor: { id: "evidence-monitor", type: "system" },
     idempotencyKey: `traffic:${tenMinuteWindow}`,
     limit: 2,
+    sourceIds: trafficSourceIdsForWindow(tenMinuteWindow),
     trigger: "traffic",
   });
 }

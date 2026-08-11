@@ -47,7 +47,8 @@ const worker = {
       env.DB &&
       env.SNAPSHOTS &&
       Date.now() >= nextEvidenceProbeAt &&
-      !url.pathname.startsWith("/_vinext/")
+      !url.pathname.startsWith("/_vinext/") &&
+      !url.pathname.startsWith("/api/")
     ) {
       nextEvidenceProbeAt = Date.now() + 60_000;
       ctx.waitUntil(

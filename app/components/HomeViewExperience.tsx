@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
+import type { PublicMonitorSnapshot } from "../lib/evidence/public-monitor";
 import { useCivicPreferences } from "./CivicPreferences";
 import { IslandTerrain, type TerrainAnchorPosition } from "./IslandTerrain";
+import { PublicMonitorPanel } from "./PublicMonitorPanel";
 import styles from "./HomeViewExperience.module.css";
 
 const HOME_VIEW_STORAGE_KEY = "peoples-isle.home-view.v1";
@@ -448,11 +450,13 @@ export function HomeViewExperience({
   boundarySourceUrl,
   candidates,
   constituencies,
+  monitorSnapshot,
   updates,
 }: {
   boundarySourceUrl: string;
   candidates: readonly HomeCandidate[];
   constituencies: readonly HomeConstituency[];
+  monitorSnapshot: PublicMonitorSnapshot | null;
   updates: readonly HomeUpdate[];
 }) {
   const view = useSyncExternalStore(subscribeToHomeView, getHomeViewSnapshot, () => "atlas");
@@ -521,26 +525,28 @@ export function HomeViewExperience({
         </div>
       </div>
 
-      {view === "atlas" ? (
-        <div
-          aria-labelledby="living-atlas-tab"
-          className={styles.atlasView}
-          id="living-atlas-view"
-          key="atlas"
-          role="region"
-        >
-          <CandidateAtlasMap
-            boundarySourceUrl={boundarySourceUrl}
-            candidates={candidates}
-            constituencies={constituencies}
-            onSelect={setSelectedConstituencyId}
-            selectedId={selectedConstituencyId}
-          />
+      <div className={styles.experienceGrid}>
+        <div className={styles.experienceMain}>
+          {view === "atlas" ? (
+            <div
+              aria-labelledby="living-atlas-tab"
+              className={styles.atlasView}
+              id="living-atlas-view"
+              key="atlas"
+              role="region"
+            >
+              <CandidateAtlasMap
+                boundarySourceUrl={boundarySourceUrl}
+                candidates={candidates}
+                constituencies={constituencies}
+                onSelect={setSelectedConstituencyId}
+                selectedId={selectedConstituencyId}
+              />
 
-          <div className={styles.atlasNews}>
+              <div className={styles.atlasNews}>
             <div className={styles.sectionHeading}>
               <div>
-                <span>Latest reviewed evidence</span>
+                <span>Founder-curated launch briefing</span>
                 <h2>{selected ? `For ${selected.name}` : "Across the Island"}</h2>
               </div>
               <a href="/latest">Election desk ↗</a>
@@ -566,16 +572,16 @@ export function HomeViewExperience({
                 <a href={islandWideUpdates[0].url} target="_blank" rel="noreferrer">Source ↗</a>
               </div>
             ) : null}
-          </div>
-        </div>
-      ) : (
-        <div
-          aria-labelledby="election-desk-tab"
-          className={styles.deskView}
-          id="election-desk-view"
-          key="desk"
-          role="region"
-        >
+              </div>
+            </div>
+          ) : (
+            <div
+              aria-labelledby="election-desk-tab"
+              className={styles.deskView}
+              id="election-desk-view"
+              key="desk"
+              role="region"
+            >
           <div className={styles.deskMasthead}>
             <div>
               <p>The Island Election Desk</p>
@@ -585,7 +591,7 @@ export function HomeViewExperience({
             <div className={styles.deskStatus}>
               <span><i aria-hidden="true" /> Reviewed evidence only</span>
               <strong>Every summary opens to its original source</strong>
-              <small>Automated discoveries remain private until reviewed</small>
+              <small>Collection remains separate; nothing publishes automatically</small>
             </div>
           </div>
 
@@ -644,7 +650,7 @@ export function HomeViewExperience({
             </div>
           </div>
 
-          <div className={styles.deskCandidates}>
+              <div className={styles.deskCandidates}>
             <div className={styles.sectionHeading}>
               <div>
                 <span>Reviewed candidate profiles</span>
@@ -660,9 +666,14 @@ export function HomeViewExperience({
                 <p>Choose one above. The preference will also be used on the full Election Desk.</p>
               </div>
             )}
-          </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+        <div className={styles.monitorColumn}>
+          <PublicMonitorPanel initialSnapshot={monitorSnapshot} />
+        </div>
+      </div>
     </section>
   );
 }

@@ -4,6 +4,17 @@
   min-height: 700px;
 }
 
+.experienceGrid {
+  align-items: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 318px;
+}
+
+.experienceMain,
+.monitorColumn {
+  min-width: 0;
+}
+
 .switchBar {
   background: rgba(244, 240, 231, .97);
   border-bottom: 1px solid rgba(24, 54, 56, .14);
@@ -19,8 +30,22 @@
   gap: 22px;
   justify-content: space-between;
   margin: 0 auto;
-  max-width: 1280px;
+  max-width: 1540px;
   padding: 13px 32px;
+}
+
+@media (max-width: 1320px) {
+  .experienceGrid {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .experienceMain,
+  .monitorColumn {
+    width: 100%;
+  }
+
+  .monitorColumn { order: -1; }
 }
 
 .viewSwitch {

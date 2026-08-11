@@ -26,6 +26,18 @@ import {
   sourceItemVersionEntityNoUpdateSql,
 } from "../app/lib/evidence/candidate-intelligence-sql.ts";
 import { candidates, updates } from "../app/lib/data.ts";
+import { rotateSourceIdsForWindow } from "../app/lib/evidence/ingestion-scheduling.ts";
+
+test("traffic-triggered monitoring rotates source priority fairly", () => {
+  const sourceIds = Array.from({ length: 9 }, (_, index) => `source-${index + 1}`);
+  const first = rotateSourceIdsForWindow(sourceIds, 100);
+  const second = rotateSourceIdsForWindow(sourceIds, 101);
+
+  assert.equal(first.length > 2, true);
+  assert.deepEqual(new Set(first), new Set(second));
+  assert.equal(new Set(first).size, first.length);
+  assert.deepEqual(first.slice(0, 2).filter((sourceId) => second.slice(0, 2).includes(sourceId)), []);
+});
 
 test("candidate directory cards retain constituency and portrait provenance", () => {
   const entries = parseCandidateDirectory(

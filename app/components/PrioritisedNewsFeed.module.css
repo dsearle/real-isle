@@ -48,6 +48,35 @@
   padding: 9px 13px;
 }
 
+.curationNote {
+  background: #e7eee9;
+  border-left: 3px solid #2f6f6b;
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+}
+
+.curationNote span {
+  color: #2f6f6b;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.curationNote strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 17px;
+}
+
+.curationNote p {
+  color: #526669;
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 0;
+  max-width: 720px;
+}
+
 .group {
   display: grid;
 }
