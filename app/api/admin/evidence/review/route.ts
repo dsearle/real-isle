@@ -14,6 +14,7 @@ const CONTENT_HASH = /^[0-9a-f]{64}$/;
 const ITEM_ID = /^item_[0-9a-f]{32}$/;
 const VERSION_ID = /^itemversion_[0-9a-f]{32}$/;
 const CANDIDACY_ID = /^[a-z0-9][a-z0-9:-]{0,99}$/;
+const RULESET_ID = /^[a-z0-9][a-z0-9._:-]{0,99}$/;
 
 function json(value: unknown, status = 200) {
   return Response.json(value, {
@@ -71,6 +72,8 @@ export async function POST(request: Request) {
   const itemId = body.itemId;
   const expectedVersionId = body.expectedVersionId;
   const expectedContentHash = body.expectedContentHash;
+  const expectedCollectionReasonHash = body.expectedCollectionReasonHash;
+  const expectedCollectionRuleset = body.expectedCollectionRuleset;
   const rationale = body.rationale;
   const candidateIds = body.candidateIds;
   const candidateSuggestionFingerprint = body.candidateSuggestionFingerprint;
@@ -86,6 +89,18 @@ export async function POST(request: Request) {
   }
   if (typeof expectedContentHash !== "string" || !CONTENT_HASH.test(expectedContentHash)) {
     return json({ error: "The source content hash is invalid." }, 400);
+  }
+  if (
+    typeof expectedCollectionReasonHash !== "string"
+    || !CONTENT_HASH.test(expectedCollectionReasonHash)
+  ) {
+    return json({ error: "The frozen collection assessment is missing or invalid." }, 400);
+  }
+  if (
+    typeof expectedCollectionRuleset !== "string"
+    || !RULESET_ID.test(expectedCollectionRuleset)
+  ) {
+    return json({ error: "The collection assessment ruleset is missing or invalid." }, 400);
   }
   if (typeof rationale !== "string") {
     return json({ error: "The review note is invalid." }, 400);
@@ -116,6 +131,8 @@ export async function POST(request: Request) {
       decision,
       candidateIds: normalizedCandidateIds,
       candidateSuggestionFingerprint,
+      expectedCollectionReasonHash,
+      expectedCollectionRuleset,
       expectedContentHash,
       expectedVersionId,
       itemId,

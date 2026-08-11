@@ -1,28 +1,30 @@
-import { appendAuditEventWithStatements } from "./audit";
-import { fingerprintCandidateSuggestions } from "./candidate-association";
-import { deterministicId, sha256Hex } from "./integrity";
+import { appendAuditEventWithStatements } from "./audit.ts";
+import { fingerprintCandidateSuggestions } from "./candidate-association.ts";
+import { deterministicId, sha256Hex } from "./integrity.ts";
 import {
   normalizeReviewRationale,
   SourceItemReviewValidationError,
   type SourceItemReviewDecision,
-} from "./review-validation";
+} from "./review-validation.ts";
 import {
   insertSourceItemCandidateAssignmentReviewSql,
   insertSourceItemReviewSql,
   updateSourceItemReviewStateSql,
-} from "./review-sql";
-import { ensureEvidenceTriggers } from "./triggers";
+} from "./review-sql.ts";
+import { ensureEvidenceTriggers } from "./triggers.ts";
 
 export {
   normalizeReviewRationale,
   SourceItemReviewValidationError,
   type SourceItemReviewDecision,
-} from "./review-validation";
+} from "./review-validation.ts";
 
 export type SourceItemReviewInput = {
   candidateIds: string[];
   candidateSuggestionFingerprint: string;
   decision: SourceItemReviewDecision;
+  expectedCollectionReasonHash: string;
+  expectedCollectionRuleset: string;
   expectedContentHash: string;
   expectedVersionId: string;
   itemId: string;
@@ -37,6 +39,8 @@ export type SourceItemReviewReceipt = {
   candidateIds: string[];
   createdAt: string;
   decision: SourceItemReviewDecision;
+  collectionReasonHash: string;
+  collectionRuleset: string;
   idempotent: boolean;
   publicationState: string;
   reviewKind: "candidate-assignment" | "source-version";
@@ -58,6 +62,8 @@ type PriorSourceReview = {
 };
 
 type ReviewAudit = {
+  collection_reason_hash: string | null;
+  collection_ruleset: string | null;
   event_hash: string;
   sequence: number;
 };
@@ -84,6 +90,11 @@ type SourceItemForReview = {
   latest_version_id: string | null;
   publication_state: string;
   review_state: string;
+};
+
+type FrozenCollectionAssessment = {
+  canonical_reason_hash: string;
+  ruleset_id: string;
 };
 
 async function candidateAssociationsForReview(
@@ -190,7 +201,9 @@ async function existingReceipt(
   }
   const audit = await db
     .prepare(
-      `SELECT sequence, event_hash
+      `SELECT sequence, event_hash,
+              json_extract(payload, '$.collectionReasonHash') AS collection_reason_hash,
+              json_extract(payload, '$.collectionRuleset') AS collection_ruleset
          FROM audit_events
         WHERE action = ?
           AND entity_type = 'source-item-version'
@@ -201,6 +214,14 @@ async function existingReceipt(
     .first<ReviewAudit>();
   if (!audit) {
     throw new Error("The stored review has no matching audit event.");
+  }
+  if (
+    audit.collection_reason_hash !== input.expectedCollectionReasonHash
+    || audit.collection_ruleset !== input.expectedCollectionRuleset
+  ) {
+    throw new SourceItemReviewConflictError(
+      "This source version was reviewed against a different collection assessment.",
+    );
   }
   const currentItem = await db
     .prepare(
@@ -245,6 +266,8 @@ async function existingReceipt(
     candidateIds: frozenCandidateIds,
     createdAt: review.created_at,
     decision: input.decision,
+    collectionReasonHash: input.expectedCollectionReasonHash,
+    collectionRuleset: input.expectedCollectionRuleset,
     idempotent: true,
     publicationState: currentItem.publication_state,
     reviewKind,
@@ -283,6 +306,27 @@ export async function reviewSourceItemVersion(
     .bind(input.itemId)
     .first<SourceItemForReview>();
   if (!item) throw new SourceItemReviewNotFoundError();
+  const collectionAssessment = await db
+    .prepare(
+      `SELECT canonical_reason_hash, ruleset_id
+         FROM source_item_version_collection_assessments
+        WHERE source_item_version_id = ?`,
+    )
+    .bind(input.expectedVersionId)
+    .first<FrozenCollectionAssessment>();
+  if (!collectionAssessment) {
+    throw new SourceItemReviewConflictError(
+      "This source version does not yet have a frozen collection assessment. Refresh after it has been assessed.",
+    );
+  }
+  if (
+    collectionAssessment.canonical_reason_hash !== input.expectedCollectionReasonHash
+    || collectionAssessment.ruleset_id !== input.expectedCollectionRuleset
+  ) {
+    throw new SourceItemReviewConflictError(
+      "The reason for collecting this source changed while you were reviewing it. Refresh and check the frozen assessment.",
+    );
+  }
 
   const priorSourceReview = await db
     .prepare(
@@ -396,6 +440,8 @@ export async function reviewSourceItemVersion(
           contentHash: input.expectedContentHash,
           candidateAssociations,
           candidateSuggestionFingerprint: normalizedInput.candidateSuggestionFingerprint,
+          collectionReasonHash: input.expectedCollectionReasonHash,
+          collectionRuleset: input.expectedCollectionRuleset,
           decision: input.decision,
           itemId: input.itemId,
           nextPublicationState,
@@ -514,6 +560,8 @@ export async function reviewSourceItemVersion(
       candidateIds: normalizedInput.candidateIds,
       createdAt,
       decision: input.decision,
+      collectionReasonHash: input.expectedCollectionReasonHash,
+      collectionRuleset: input.expectedCollectionRuleset,
       idempotent: false,
       publicationState: nextPublicationState,
       reviewKind,

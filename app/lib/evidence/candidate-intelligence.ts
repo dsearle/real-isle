@@ -1,4 +1,5 @@
 import { getCandidate, type Candidate } from "../data";
+import { dedupeCandidateEvidenceForAnalysis } from "./candidate-evidence-dedupe";
 import { sha256Hex, stableJson } from "./integrity";
 
 export type CandidateDossierEvidence = {
@@ -179,16 +180,17 @@ async function buildOverview(
   founderPreview: boolean,
   analysisState: string,
 ) {
+  const analysisEvidence = dedupeCandidateEvidenceForAnalysis(evidence);
   const reviewedSourceUrls = new Set([
     ...candidate.sources.map((source) => source.url),
-    ...evidence.map((item) => item.canonicalUrl),
+    ...analysisEvidence.map((item) => item.canonicalUrl),
   ]);
   const inputHash = await sha256Hex(stableJson({
     editorialPositions: Object.entries(candidate.positions)
       .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
       .map(([topic, position]) => ({ detail: position.detail, label: position.label, state: position.state, topic })),
     editorialSources: candidate.sources.map((source) => source.url).sort(),
-    evidenceVersions: evidence
+    evidenceVersions: analysisEvidence
       .map((item) => ({ contentHash: item.contentHash, reviewId: item.reviewId, versionId: item.versionId }))
       .sort((left, right) => left.versionId < right.versionId ? -1 : left.versionId > right.versionId ? 1 : 0),
     method: "candidate-campaign-record-v1",
@@ -201,8 +203,8 @@ async function buildOverview(
   const topicSentence = reviewedTopics.length
     ? ` Existing reviewed issue material covers ${reviewedTopics.join(", ")}.`
     : " No proposition-level policy position has yet completed review.";
-  const sourceText = evidence.length
-    ? `${evidence.length} approved live source version${evidence.length === 1 ? " is" : "s are"} assigned to the ${founderPreview ? "private" : "public"} evidence record.`
+  const sourceText = analysisEvidence.length
+    ? `${analysisEvidence.length} unique approved source record${analysisEvidence.length === 1 ? " is" : "s are"} assigned to the ${founderPreview ? "private" : "public"} evidence record. Duplicate captures with the same URL and content hash are counted once.`
     : "No approved live source version is currently assigned to this evidence record.";
 
   return {
@@ -211,7 +213,7 @@ async function buildOverview(
     inputHash,
     latestReviewedAt,
     sourceCount: reviewedSourceUrls.size,
-    state: evidence.length
+    state: analysisEvidence.length
       ? founderPreview ? "private-research-draft" : "public-evidence-only"
       : "preparing",
     text: `${candidate.name} is recorded as a prospective candidate in ${candidate.constituency}. ${sourceText}${topicSentence} Source approval alone does not establish a candidate position; cited claims must be reviewed separately.`,

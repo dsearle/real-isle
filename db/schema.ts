@@ -1036,6 +1036,39 @@ export const auditEvents = sqliteTable(
   ],
 );
 
+export const sourceItemVersionCollectionAssessments = sqliteTable(
+  "source_item_version_collection_assessments",
+  {
+    sourceItemVersionId: text("source_item_version_id")
+      .primaryKey()
+      .references(() => sourceItemVersions.id),
+    rulesetId: text("ruleset_id").notNull(),
+    route: text("route").notNull(),
+    canonicalReasonJson: text("canonical_reason_json").notNull(),
+    canonicalReasonHash: text("canonical_reason_hash").notNull(),
+    createdByAuditEventId: text("created_by_audit_event_id")
+      .notNull()
+      .references(() => auditEvents.id),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("idx_collection_assessments_route").on(table.rulesetId, table.route),
+    index("idx_collection_assessments_audit_event").on(table.createdByAuditEventId),
+    check(
+      "collection_assessments_route_check",
+      sql`${table.route} IN ('evidence-review', 'context-monitoring', 'broad-monitoring')`,
+    ),
+    check(
+      "collection_assessments_reason_json_check",
+      sql`json_valid(${table.canonicalReasonJson})`,
+    ),
+    check(
+      "collection_assessments_reason_hash_check",
+      sql`length(${table.canonicalReasonHash}) = 64 AND ${table.canonicalReasonHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
 export const auditChainHead = sqliteTable("audit_chain_head", {
   chainId: integer("chain_id").primaryKey(),
   nextSequence: integer("next_sequence").notNull(),

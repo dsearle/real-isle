@@ -4,7 +4,6 @@ import {
   constituencyCatalogue,
   election,
   monitoredSources,
-  policyTopicCatalogue,
   type MonitoredSource,
 } from "./catalogue";
 import {
@@ -14,6 +13,24 @@ import {
   type CandidateProfileDocument,
   type CandidateProfileLink,
 } from "./candidate-html";
+import { candidateDirectoryStatesSql } from "./candidate-directory-sql";
+import {
+  appendLegacyCollectionAssessment,
+  hasCollectionAssessment,
+  insertCollectionAssessmentStatement,
+  legacyCollectionAssessmentBacklogSql,
+  prepareCollectionAssessment,
+  shouldAppendLegacyCollectionAssessment,
+  type PreparedCollectionAssessment,
+} from "./collection-assessment";
+import {
+  projectCollectionReason,
+} from "./collection-reason";
+import {
+  deleteCurrentKeywordSignalsSql,
+  insertCurrentKeywordSignalSql,
+  projectKeywordCollectionSignals,
+} from "./collection-signals";
 import { parseFeed, type NormalizedFeedItem } from "./feed";
 import { deterministicId, randomId, sha256Hex, stableJson } from "./integrity";
 import { rotateSourceIdsForWindow } from "./ingestion-scheduling";
@@ -115,6 +132,25 @@ type CandidateProfileDue = {
 type CandidateMatcher = {
   full_name: string;
   id: string;
+};
+
+const candidateMatchersSql = `SELECT candidacies.id, people.full_name
+  FROM candidacies
+  JOIN people ON people.id = candidacies.person_id
+ WHERE candidacies.election_id = ?
+   AND candidacies.declaration_status != 'source-removed'
+ ORDER BY candidacies.id`;
+
+type LegacyCollectionItem = {
+  first_seen_at: string;
+  item_type: string;
+  source_feed_type: string;
+  source_id: string;
+  source_item_id: string;
+  source_name: string;
+  source_item_version_id: string;
+  summary: string;
+  title: string;
 };
 
 type StoredSnapshot = {
@@ -449,71 +485,75 @@ async function storeSnapshot(input: {
   return { chainHash, contentHash, id, inserted: true } satisfies StoredSnapshot;
 }
 
-function containsTerm(searchableText: string, term: string) {
-  const escaped = term
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}(?=$|[^\\p{L}\\p{N}])`, "u").test(
-    searchableText,
-  );
-}
-
-function entityMatchStatements(
+function entityMatchProjection(
   db: D1Database,
   itemId: string,
+  sourceItemVersionId: string,
   searchableText: string,
   candidateMatchers: CandidateMatcher[],
 ) {
-  const normalized = searchableText.normalize("NFKC").toLowerCase();
+  const projection = projectKeywordCollectionSignals(
+    searchableText,
+    candidateMatchers.map((candidate) => ({ id: candidate.id, label: candidate.full_name })),
+  );
   const statements: D1PreparedStatement[] = [
     db
-      .prepare("DELETE FROM item_entities WHERE item_id = ? AND match_method = 'deterministic-keyword-v1'")
-      .bind(itemId),
+      .prepare(deleteCurrentKeywordSignalsSql)
+      .bind(itemId, itemId, sourceItemVersionId),
   ];
 
-  for (const candidate of candidateMatchers) {
-    if (!containsTerm(normalized, candidate.full_name)) continue;
+  for (const candidate of projection.candidates) {
     statements.push(
       db
         .prepare(
-          `INSERT OR IGNORE INTO item_entities (
-            item_id, entity_type, entity_id, mention_text, match_method, confidence
-          ) VALUES (?, 'candidacy', ?, ?, 'deterministic-keyword-v1', 0.98)`,
+          insertCurrentKeywordSignalSql,
         )
-        .bind(itemId, candidate.id, candidate.full_name),
+        .bind(
+          itemId,
+          "candidacy",
+          candidate.id,
+          candidate.mentionText,
+          candidate.confidence,
+          itemId,
+          sourceItemVersionId,
+        ),
     );
   }
-  for (const constituency of constituencyCatalogue) {
-    const constituencyTerms =
-      constituency.name === "Middle"
-        ? ["constituency of middle", "middle constituency"]
-        : [constituency.name];
-    if (!constituencyTerms.some((term) => containsTerm(normalized, term))) continue;
+  for (const constituency of projection.constituencies) {
     statements.push(
       db
         .prepare(
-          `INSERT OR IGNORE INTO item_entities (
-            item_id, entity_type, entity_id, mention_text, match_method, confidence
-          ) VALUES (?, 'constituency', ?, ?, 'deterministic-keyword-v1', 0.9)`,
+          insertCurrentKeywordSignalSql,
         )
-        .bind(itemId, constituency.id, constituency.name),
+        .bind(
+          itemId,
+          "constituency",
+          constituency.id,
+          constituency.mentionText,
+          constituency.confidence,
+          itemId,
+          sourceItemVersionId,
+        ),
     );
   }
-  for (const topic of policyTopicCatalogue) {
-    const keyword = topic.keywords.find((candidate) => containsTerm(normalized, candidate));
-    if (!keyword) continue;
+  for (const topic of projection.topics) {
     statements.push(
       db
         .prepare(
-          `INSERT OR IGNORE INTO item_entities (
-            item_id, entity_type, entity_id, mention_text, match_method, confidence
-          ) VALUES (?, 'topic', ?, ?, 'deterministic-keyword-v1', 0.7)`,
+          insertCurrentKeywordSignalSql,
         )
-        .bind(itemId, topic.id, keyword),
+        .bind(
+          itemId,
+          "topic",
+          topic.id,
+          topic.mentionText,
+          topic.confidence,
+          itemId,
+          sourceItemVersionId,
+        ),
     );
   }
-  return statements;
+  return { ...projection, statements };
 }
 
 async function runItemStatement(input: {
@@ -560,12 +600,7 @@ async function processFeedItem(input: {
   }
   const now = new Date().toISOString();
   const candidateMatchers = await db
-    .prepare(
-      `SELECT candidacies.id, people.full_name
-       FROM candidacies
-       JOIN people ON people.id = candidacies.person_id
-       WHERE candidacies.election_id = ?`,
-    )
+    .prepare(candidateMatchersSql)
     .bind(election.id)
     .all<CandidateMatcher>();
   const canonicalUrlHash = await sha256Hex(input.item.url);
@@ -608,6 +643,27 @@ async function processFeedItem(input: {
     outcome === "unchanged" && existing?.latest_version_id
       ? existing.latest_version_id
       : await deterministicId("itemversion", resolvedItemId, payloadHash, snapshotId);
+  const entityProjection = entityMatchProjection(
+    db,
+    resolvedItemId,
+    versionId,
+    `${input.item.title}\n${input.item.summary}`,
+    candidateMatchers.results,
+  );
+  const collectionReason = projectCollectionReason({
+    candidates: entityProjection.candidates,
+    constituencies: entityProjection.constituencies,
+    itemType: input.source.itemType,
+    sourceFeedType: input.source.feedType,
+    sourceId: input.source.id,
+    sourceName: input.source.name,
+    summary: input.item.summary,
+    title: input.item.title,
+    topics: entityProjection.topics,
+  });
+  const collectionAssessment = await prepareCollectionAssessment(versionId, collectionReason);
+  const collectionAssessmentAlreadyFrozen = outcome === "unchanged"
+    && await hasCollectionAssessment(db, versionId);
   const observationStatement = await runItemStatement({
     db,
     itemId: resolvedItemId,
@@ -691,12 +747,7 @@ async function processFeedItem(input: {
           payloadHash,
           resolvedItemId,
         ),
-      ...entityMatchStatements(
-        db,
-        resolvedItemId,
-        `${input.item.title}\n${input.item.summary}`,
-        candidateMatchers.results,
-      ),
+      ...(outcome === "unchanged" ? [] : entityProjection.statements),
       observationStatement,
     );
     return statements;
@@ -712,6 +763,9 @@ async function processFeedItem(input: {
         entityId: resolvedItemId,
         entityType: "source-item",
         payload: {
+          collectionReasonHash: collectionAssessment.canonicalReasonHash,
+          collectionRoute: collectionAssessment.route,
+          collectionRuleset: collectionAssessment.rulesetId,
           payloadHash,
           snapshotId,
           sourceId: input.source.id,
@@ -720,9 +774,22 @@ async function processFeedItem(input: {
         },
       },
       buildStatements,
+      (event) => [insertCollectionAssessmentStatement(db, collectionAssessment, event)],
     );
   } else {
     await db.batch(buildStatements());
+    if (shouldAppendLegacyCollectionAssessment(
+      outcome !== "unchanged",
+      collectionAssessmentAlreadyFrozen,
+    )) {
+      await appendLegacyCollectionAssessment({
+        actor: { id: "evidence-monitor", type: "system" },
+        assessment: collectionAssessment,
+        buildStatements: () => entityProjection.statements,
+        db,
+        sourceItemId: resolvedItemId,
+      });
+    }
   }
 
   return { outcome };
@@ -1143,42 +1210,35 @@ async function buildCandidateDirectoryStatements(input: {
     )
     .bind(input.source.id)
     .all<ExistingItem>();
+  const frozenAssessments = await input.db
+    .prepare(
+      `SELECT assessments.source_item_version_id
+         FROM source_item_version_collection_assessments assessments
+         JOIN source_item_versions versions
+           ON versions.id = assessments.source_item_version_id
+         JOIN source_items items ON items.id = versions.source_item_id
+        WHERE items.source_id = ?`,
+    )
+    .bind(input.source.id)
+    .all<{ source_item_version_id: string }>();
+  const frozenVersionIds = new Set(
+    frozenAssessments.results.map((assessment) => assessment.source_item_version_id),
+  );
   const itemsByExternalId = new Map(
     existingItems.results
       .filter((item): item is ExistingItem & { external_id: string } => Boolean(item.external_id))
       .map((item) => [item.external_id, item]),
   );
   const directoryStates = await input.db
-    .prepare(
-      `SELECT profiles.slug, profiles.candidacy_id, profiles.current_profile_observation_id,
-              candidacies.declaration_status,
-              observations.payload_hash AS directory_payload_hash,
-              (
-                SELECT versions.id
-                FROM source_item_versions versions
-                WHERE versions.source_item_id = observations.source_item_id
-                  AND versions.payload_hash = observations.payload_hash
-                  AND versions.parser_version = 'candidate-directory-v1'
-                  AND versions.observed_at <= observations.observed_at
-                ORDER BY
-                  CASE WHEN versions.snapshot_id = observations.snapshot_id THEN 0 ELSE 1 END,
-                  versions.observed_at DESC,
-                  versions.created_at DESC
-                LIMIT 1
-              ) AS current_directory_version_id,
-              profile_observations.payload AS current_profile_payload,
-              profile_observations.payload_hash AS current_profile_payload_hash,
-              profile_observations.snapshot_id AS current_profile_snapshot_id
-       FROM candidate_profiles profiles
-       JOIN candidacies ON candidacies.id = profiles.candidacy_id
-       JOIN candidate_profile_observations observations
-         ON observations.id = profiles.current_directory_observation_id
-       LEFT JOIN candidate_profile_observations profile_observations
-         ON profile_observations.id = profiles.current_profile_observation_id`,
-    )
+    .prepare(candidateDirectoryStatesSql)
     .all<CandidateDirectoryState>();
   const directoryStateBySlug = new Map(directoryStates.results.map((state) => [state.slug, state]));
   const statements: D1PreparedStatement[] = [];
+  const assessments: PreparedCollectionAssessment[] = [];
+  const legacyAssessments: Array<{
+    assessment: PreparedCollectionAssessment;
+    sourceItemId: string;
+  }> = [];
   const counts = { changed: 0, inserted: 0, removed: 0, unchanged: 0 };
   const observedSlugs = new Set(input.entries.map((entry) => entry.slug));
   counts.removed = directoryStates.results.filter(
@@ -1253,6 +1313,38 @@ async function buildCandidateDirectoryStatements(input: {
       outcome === "unchanged" && profileState?.current_directory_version_id
         ? profileState.current_directory_version_id
         : await deterministicId("itemversion", itemId, payloadHash, input.snapshotId);
+    const collectionReason = projectCollectionReason({
+      candidates: [{
+        confidence: 1,
+        id: candidacyId,
+        label: entry.name,
+        matchMethod: "candidate-directory-v1",
+        mentionText: entry.name,
+      }],
+      constituencies: [{
+        confidence: 1,
+        id: constituencyId,
+        label: entry.constituencyName,
+        matchMethod: "candidate-directory-v1",
+        mentionText: entry.constituencyName,
+      }],
+      itemType: input.source.itemType,
+      sourceFeedType: input.source.feedType,
+      sourceId: input.source.id,
+      sourceName: input.source.name,
+      summary,
+      title: entry.name,
+      topics: [],
+    });
+    const collectionAssessment = await prepareCollectionAssessment(versionId, collectionReason);
+    if (shouldAppendLegacyCollectionAssessment(
+      outcome !== "unchanged",
+      frozenVersionIds.has(versionId),
+    )) {
+      legacyAssessments.push({ assessment: collectionAssessment, sourceItemId: itemId });
+    } else if (outcome !== "unchanged") {
+      assessments.push(collectionAssessment);
+    }
     if (outcome === "new") counts.inserted += 1;
     else if (outcome === "changed") counts.changed += 1;
     else counts.unchanged += 1;
@@ -1550,7 +1642,7 @@ async function buildCandidateDirectoryStatements(input: {
       )
       .bind(observedAt),
   );
-  return { counts, observedAt, statements };
+  return { assessments, counts, legacyAssessments, observedAt, statements };
 }
 
 async function dueCandidateProfile(db: D1Database, sourceId: string, now: string) {
@@ -1644,6 +1736,26 @@ async function processCandidateProfile(input: {
           payloadHash,
           snapshot.id,
         );
+  const collectionReason = projectCollectionReason({
+    candidates: [{
+      confidence: 1,
+      id: input.due.candidacy_id,
+      label: input.due.full_name,
+      matchMethod: "candidate-profile-v1",
+      mentionText: parsed.name,
+    }],
+    constituencies: [],
+    itemType: input.source.itemType,
+    sourceFeedType: input.source.feedType,
+    sourceId: input.source.id,
+    sourceName: input.source.name,
+    summary: parsed.biographyParagraphs[0] ?? "Candidate profile observed.",
+    title: parsed.name,
+    topics: [],
+  });
+  const collectionAssessment = await prepareCollectionAssessment(versionId, collectionReason);
+  const collectionAssessmentAlreadyFrozen = !profileChanged
+    && await hasCollectionAssessment(db, versionId);
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
@@ -1875,6 +1987,11 @@ async function processCandidateProfile(input: {
       entityId: input.due.candidacy_id,
       entityType: "candidacy",
       payload: {
+        ...(profileChanged ? {
+          collectionReasonHash: collectionAssessment.canonicalReasonHash,
+          collectionRoute: collectionAssessment.route,
+          collectionRuleset: collectionAssessment.rulesetId,
+        } : {}),
         documentCount: parsed.documents.length,
         linkCount: parsed.links.length,
         payloadHash,
@@ -1885,7 +2002,21 @@ async function processCandidateProfile(input: {
       },
     },
     () => statements,
+    profileChanged
+      ? (event) => [insertCollectionAssessmentStatement(db, collectionAssessment, event)]
+      : undefined,
   );
+  if (shouldAppendLegacyCollectionAssessment(
+    profileChanged,
+    collectionAssessmentAlreadyFrozen,
+  )) {
+    await appendLegacyCollectionAssessment({
+      actor: { id: "evidence-monitor", type: "system" },
+      assessment: collectionAssessment,
+      db,
+      sourceItemId: input.due.source_item_id,
+    });
+  }
   return { changed: profileChanged, snapshot };
 }
 
@@ -2052,6 +2183,16 @@ async function runCandidateDirectorySource(
           })),
         ),
       );
+      const collectionAssessmentDigest = await sha256Hex(stableJson(
+        directory.assessments
+          .map((assessment) => ({
+            canonicalReasonHash: assessment.canonicalReasonHash,
+            route: assessment.route,
+            rulesetId: assessment.rulesetId,
+            sourceItemVersionId: assessment.sourceItemVersionId,
+          }))
+          .sort((left, right) => left.sourceItemVersionId.localeCompare(right.sourceItemVersionId)),
+      ));
       await appendAuditEventWithStatements(
         db,
         {
@@ -2062,6 +2203,8 @@ async function runCandidateDirectorySource(
           entityType: "source",
           payload: {
             candidateCount: entries.length,
+            collectionAssessmentCount: directory.assessments.length,
+            collectionAssessmentDigest,
             constituencyCount: observedConstituencies.size,
             directoryDigest,
             removedCandidateCount: directory.counts.removed,
@@ -2070,7 +2213,18 @@ async function runCandidateDirectorySource(
           },
         },
         () => directory.statements,
+        (event) => directory.assessments.map((assessment) =>
+          insertCollectionAssessmentStatement(db, assessment, event)
+        ),
       );
+      for (const legacy of directory.legacyAssessments) {
+        await appendLegacyCollectionAssessment({
+          actor: command.actor,
+          assessment: legacy.assessment,
+          db,
+          sourceItemId: legacy.sourceItemId,
+        });
+      }
     }
 
     const due = await dueCandidateProfile(db, source.id, new Date().toISOString());
@@ -2523,12 +2677,59 @@ async function runSource(
   }
 }
 
+export async function backfillLegacyCollectionAssessments(
+  db: D1Database,
+  actor: IngestionActor,
+  limit = 8,
+) {
+  const items = await db
+    .prepare(legacyCollectionAssessmentBacklogSql)
+    .bind(Math.max(1, Math.min(limit, 20)))
+    .all<LegacyCollectionItem>();
+  const candidateMatchers = await db
+    .prepare(candidateMatchersSql)
+    .bind(election.id)
+    .all<CandidateMatcher>();
+
+  let assessed = 0;
+  for (const item of items.results) {
+    const projection = entityMatchProjection(
+      db,
+      item.source_item_id,
+      item.source_item_version_id,
+      `${item.title}\n${item.summary}`,
+      candidateMatchers.results,
+    );
+    const reason = projectCollectionReason({
+      candidates: projection.candidates,
+      constituencies: projection.constituencies,
+      itemType: item.item_type,
+      sourceFeedType: item.source_feed_type,
+      sourceId: item.source_id,
+      sourceName: item.source_name,
+      summary: item.summary,
+      title: item.title,
+      topics: projection.topics,
+    });
+    const assessment = await prepareCollectionAssessment(item.source_item_version_id, reason);
+    if (await appendLegacyCollectionAssessment({
+      actor,
+      assessment,
+      buildStatements: () => projection.statements,
+      db,
+      sourceItemId: item.source_item_id,
+    })) assessed += 1;
+  }
+  return assessed;
+}
+
 export async function runEvidenceIngestion(
   bindings: EvidenceBindings,
   command: IngestionCommand,
 ): Promise<IngestionResult> {
   await ensureEvidenceTriggers(bindings.DB);
   await seedEvidenceReferenceData(bindings.DB);
+  await backfillLegacyCollectionAssessments(bindings.DB, command.actor);
   const allowedSourceIds = new Set(command.sourceIds ?? monitoredSources.map((source) => source.id));
   const sourceOrder = new Map(command.sourceIds?.map((sourceId, index) => [sourceId, index]) ?? []);
   const limit = Math.max(1, Math.min(command.limit ?? 2, 6));

@@ -1,4 +1,4 @@
-import { sha256Hex, stableJson } from "./integrity";
+import { sha256Hex, stableJson } from "./integrity.ts";
 
 export type CandidateSuggestionFingerprintInput = {
   candidacyId: string;

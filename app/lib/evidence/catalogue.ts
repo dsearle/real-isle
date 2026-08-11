@@ -1,4 +1,4 @@
-import { candidates, constituencies } from "../data";
+import { candidates, constituencies } from "../data.ts";
 
 export type MonitoredSource = {
   active: boolean;
@@ -29,7 +29,7 @@ export const policyTopicCatalogue = [
   { id: "health", name: "Health and Manx Care", keywords: ["manx care", "manxcare", "health", "hospital", "patient"] },
   { id: "education", name: "Education", keywords: ["education", "school", "teacher", "student"] },
   { id: "energy", name: "Energy", keywords: ["energy", "electricity", "power station"] },
-  { id: "wind", name: "Offshore wind", keywords: ["wind farm", "offshore wind", "wind energy", "turbine"] },
+  { id: "wind", name: "Offshore wind", keywords: ["wind farm", "wind farms", "wind-farm", "windfarm", "windfarms", "offshore wind", "wind energy", "turbine", "mooir vannin"] },
   { id: "environment", name: "Environment", keywords: ["environment", "climate", "biodiversity", "emissions"] },
   { id: "infrastructure", name: "Infrastructure", keywords: ["infrastructure", "sewerage", "broadband", "utilities"] },
   { id: "transport", name: "Transport", keywords: ["transport", "bus", "ferry", "airport", "roads"] },

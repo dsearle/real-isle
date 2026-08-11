@@ -7,6 +7,7 @@ import {
   parseCandidateDirectory,
   parseCandidateProfile,
 } from "../app/lib/evidence/candidate-html.ts";
+import { candidateDirectoryStatesSql } from "../app/lib/evidence/candidate-directory-sql.ts";
 import { parseFeed } from "../app/lib/evidence/feed.ts";
 import { sha256Hex, stableJson } from "../app/lib/evidence/integrity.ts";
 import { normalizeReviewRationale } from "../app/lib/evidence/review-validation.ts";
@@ -59,6 +60,74 @@ test("candidate directory cards retain constituency and portrait provenance", ()
       slug: "claire-christian",
     },
   ]);
+});
+
+test("candidate directory state lookup prefers the matching snapshot without a correlated ORDER BY", () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    database.exec(`
+      CREATE TABLE candidacies (
+        id TEXT PRIMARY KEY,
+        declaration_status TEXT NOT NULL
+      );
+      CREATE TABLE candidate_profiles (
+        candidacy_id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL,
+        current_directory_observation_id TEXT NOT NULL,
+        current_profile_observation_id TEXT
+      );
+      CREATE TABLE candidate_profile_observations (
+        id TEXT PRIMARY KEY,
+        source_item_id TEXT NOT NULL,
+        snapshot_id TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        payload_hash TEXT NOT NULL
+      );
+      CREATE TABLE source_item_versions (
+        id TEXT PRIMARY KEY,
+        source_item_id TEXT NOT NULL,
+        snapshot_id TEXT,
+        observed_at TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        parser_version TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      INSERT INTO candidacies (id, declaration_status)
+      VALUES ('candidate-a', 'prospective'), ('candidate-b', 'prospective');
+      INSERT INTO candidate_profiles
+        (candidacy_id, slug, current_directory_observation_id, current_profile_observation_id)
+      VALUES
+        ('candidate-a', 'candidate-a', 'observation-a', NULL),
+        ('candidate-b', 'candidate-b', 'observation-b', NULL);
+      INSERT INTO candidate_profile_observations
+        (id, source_item_id, snapshot_id, observed_at, payload, payload_hash)
+      VALUES
+        ('observation-a', 'item-a', 'snapshot-a', '2026-08-11T10:00:00Z', '{}', 'hash-a'),
+        ('observation-b', 'item-b', 'snapshot-b', '2026-08-11T10:00:00Z', '{}', 'hash-b');
+      INSERT INTO source_item_versions
+        (id, source_item_id, snapshot_id, observed_at, payload_hash, parser_version, created_at)
+      VALUES
+        ('version-a-exact', 'item-a', 'snapshot-a', '2026-08-11T09:00:00Z', 'hash-a',
+          'candidate-directory-v1', '2026-08-11T09:00:00Z'),
+        ('version-a-other', 'item-a', 'snapshot-other', '2026-08-11T09:30:00Z', 'hash-a',
+          'candidate-directory-v1', '2026-08-11T09:30:00Z'),
+        ('version-b-fallback', 'item-b', 'snapshot-other', '2026-08-11T09:45:00Z', 'hash-b',
+          'candidate-directory-v1', '2026-08-11T09:45:00Z');
+    `);
+
+    const rows = database.prepare(`${candidateDirectoryStatesSql} ORDER BY profiles.slug`).all();
+    assert.deepEqual(
+      rows.map(({ slug, current_directory_version_id: versionId }) => ({ slug, versionId })),
+      [
+        { slug: "candidate-a", versionId: "version-a-exact" },
+        { slug: "candidate-b", versionId: "version-b-fallback" },
+      ],
+    );
+  } finally {
+    database.close();
+  }
 });
 
 test("candidate profile parser scopes links and classifies rights-gated media", () => {

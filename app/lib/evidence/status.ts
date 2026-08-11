@@ -1,5 +1,12 @@
 import { getEvidenceBindings } from "../../../db";
 import { fingerprintCandidateSuggestions } from "./candidate-association";
+import { readVerifiedCollectionReason } from "./collection-assessment";
+import {
+  COLLECTION_ROUTING_RULE,
+  projectCollectionReason,
+  type CollectionReason,
+  type CollectionSignal,
+} from "./collection-reason";
 import { ensureEvidenceTriggers } from "./triggers";
 
 export type EvidenceSourceStatus = {
@@ -31,6 +38,7 @@ export type EvidenceRunStatus = {
   new_item_count: number;
   parser_version: string;
   processed_item_count: number;
+  followed_by_clean_run: number;
   source_name: string;
   started_at: string;
   status: string;
@@ -49,7 +57,12 @@ export type EvidenceReviewItem = {
   }>;
   candidate_ids: string | null;
   candidateSuggestionFingerprint: string;
+  collectionReason: CollectionReason;
+  collectionReasonHash: string | null;
+  collectionReasonRuleset: string;
+  collectionReasonState: "frozen" | "not-yet-frozen";
   content_hash: string | null;
+  constituencyAssociations: CollectionSignal[];
   first_seen_at: string;
   id: string;
   item_type: string;
@@ -58,16 +71,30 @@ export type EvidenceReviewItem = {
   publication_state: string;
   published_at: string | null;
   review_state: string;
+  source_feed_type: string;
+  source_id: string;
   source_name: string;
   summary: string;
   title: string;
+  topicAssociations: CollectionSignal[];
 };
 
 type EvidenceReviewItemRow = Omit<
   EvidenceReviewItem,
-  "candidateAssociations" | "candidateSuggestionFingerprint"
+  | "candidateAssociations"
+  | "candidateSuggestionFingerprint"
+  | "collectionReason"
+  | "constituencyAssociations"
+  | "topicAssociations"
 > & {
   candidate_associations_json: string;
+  canonical_reason_hash: string | null;
+  canonical_reason_json: string | null;
+  collection_route_hint: string;
+  collection_route: string | null;
+  collection_ruleset_id: string | null;
+  constituency_associations_json: string;
+  topic_associations_json: string;
 };
 
 function parseCandidateAssociations(value: string) {
@@ -83,6 +110,24 @@ function parseCandidateAssociations(value: string) {
         && typeof candidate.fullName === "string"
         && typeof candidate.matchMethod === "string"
         && typeof candidate.mentionText === "string";
+    });
+  } catch {
+    return [];
+  }
+}
+
+function parseCollectionSignals(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is CollectionSignal => {
+      if (!entry || typeof entry !== "object") return false;
+      const signal = entry as Record<string, unknown>;
+      return typeof signal.confidence === "number"
+        && typeof signal.id === "string"
+        && typeof signal.label === "string"
+        && typeof signal.matchMethod === "string"
+        && typeof signal.mentionText === "string";
     });
   } catch {
     return [];
@@ -147,7 +192,10 @@ export type EvidenceDashboard = {
     candidates: number;
     claims: number;
     pendingCandidateReview: number;
+    pendingBroadMonitoring: number;
+    pendingContextMonitoring: number;
     pendingEditorial: number;
+    pendingEvidenceReview: number;
     pendingReview: number;
     parsedCandidateProfiles: number;
     publishableCandidatePortraits: number;
@@ -172,7 +220,10 @@ type CountRow = {
   candidates: number;
   claims: number;
   pending_candidate_review: number;
+  pending_broad_monitoring: number;
+  pending_context_monitoring: number;
   pending_editorial: number;
+  pending_evidence_review: number;
   pending_review: number;
   pending_source_version_review: number;
   parsed_candidate_profiles: number;
@@ -185,6 +236,77 @@ type CountRow = {
   transcripts_published: number;
   transcripts_ready_for_review: number;
 };
+
+const pendingReviewPredicate = `(
+  items.review_state IN ('unreviewed', 'needs-update')
+  OR (
+    items.review_state = 'approved'
+    AND EXISTS (
+      SELECT 1 FROM reviews source_review
+       WHERE source_review.target_type = 'source-item-version'
+         AND source_review.target_id = items.latest_version_id
+         AND source_review.decision = 'approved'
+    )
+    AND EXISTS (
+      SELECT 1
+        FROM item_entities candidate_match
+        JOIN candidacies current_candidate
+          ON current_candidate.id = candidate_match.entity_id
+         AND current_candidate.declaration_status != 'source-removed'
+       WHERE candidate_match.item_id = items.id
+         AND candidate_match.entity_type = 'candidacy'
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM reviews assignment_review
+       WHERE assignment_review.target_type = 'source-item-version-assignment'
+         AND assignment_review.target_id = items.latest_version_id
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM source_item_version_entities frozen
+       WHERE frozen.source_item_version_id = items.latest_version_id
+         AND frozen.entity_type = 'candidacy'
+    )
+  )
+)`;
+
+const projectedDirectEvidencePredicate = `(
+  items.item_type = 'candidate-profile'
+  OR sources.id IN ('manx-radio-election', 'manx-radio-candidates')
+  OR EXISTS (
+    SELECT 1 FROM item_entities candidate_signal
+     WHERE candidate_signal.item_id = items.id
+       AND candidate_signal.entity_type = 'candidacy'
+  )
+  OR LOWER(items.title || ' ' || items.summary) LIKE '%general election%'
+  OR LOWER(items.title || ' ' || items.summary) LIKE '%house of keys%'
+  OR LOWER(items.title || ' ' || items.summary) LIKE '%polling day%'
+  OR LOWER(items.title || ' ' || items.summary) LIKE '%manifesto%'
+  OR LOWER(items.title || ' ' || items.summary) LIKE '%candidate%'
+  OR LOWER(items.title || ' ' || items.summary) LIKE '%election%'
+  OR LOWER(items.title || ' ' || items.summary) LIKE '%mhk%'
+)`;
+
+const contextSignalPredicate = `EXISTS (
+  SELECT 1 FROM item_entities context_signal
+   WHERE context_signal.item_id = items.id
+     AND context_signal.entity_type IN ('topic', 'constituency')
+)`;
+
+const collectionRouteExpression = `COALESCE(
+  (
+    SELECT frozen_assessment.route
+      FROM source_item_version_collection_assessments frozen_assessment
+     WHERE frozen_assessment.source_item_version_id = items.latest_version_id
+  ),
+  CASE
+    WHEN ${projectedDirectEvidencePredicate} THEN 'evidence-review'
+    WHEN ${contextSignalPredicate} THEN 'context-monitoring'
+    ELSE 'broad-monitoring'
+  END
+)`;
+
+const directEvidencePredicate = `(${collectionRouteExpression}) = 'evidence-review'`;
+const contextualEvidencePredicate = `(${collectionRouteExpression}) = 'context-monitoring'`;
 
 export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
   const { DB: db } = getEvidenceBindings();
@@ -205,7 +327,18 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
                   runs.discovered_count, runs.processed_item_count, runs.deferred_item_count,
                   runs.new_item_count, runs.changed_item_count, runs.error_count,
                   runs.error_summary, runs.http_status, runs.parser_version,
-                  runs.audit_head_hash, sources.name AS source_name
+                  runs.audit_head_hash, sources.name AS source_name,
+                  CASE WHEN runs.status IN ('failed', 'partial')
+                    AND EXISTS (
+                      SELECT 1 FROM ingestion_runs later
+                       WHERE later.source_id = runs.source_id
+                         AND later.started_at > runs.started_at
+                         AND later.status IN ('succeeded', 'no_change')
+                         AND (
+                           runs.status = 'failed'
+                           OR later.processed_item_count > 0
+                         )
+                    ) THEN 1 ELSE 0 END AS followed_by_clean_run
            FROM ingestion_runs runs
            JOIN sources ON sources.id = runs.source_id
            ORDER BY runs.started_at DESC LIMIT 18`,
@@ -213,91 +346,114 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
         .all<EvidenceRunStatus>(),
       db
         .prepare(
-          `SELECT items.id, items.item_type, items.title, items.summary,
-                  items.canonical_url, items.first_seen_at, items.published_at,
-                  items.review_state, items.publication_state, items.content_hash,
-                  items.latest_snapshot_id, items.latest_version_id,
-                  sources.name AS source_name,
-                  CASE WHEN items.review_state = 'approved'
-                    AND EXISTS (
-                      SELECT 1 FROM reviews source_review
-                       WHERE source_review.target_type = 'source-item-version'
-                         AND source_review.target_id = items.latest_version_id
-                         AND source_review.decision = 'approved'
-                    )
-                    AND EXISTS (
-                      SELECT 1
-                        FROM item_entities candidate_match
-                        JOIN candidacies current_candidate
-                          ON current_candidate.id = candidate_match.entity_id
-                         AND current_candidate.declaration_status != 'source-removed'
-                       WHERE candidate_match.item_id = items.id
-                         AND candidate_match.entity_type = 'candidacy'
-                    )
-                    AND NOT EXISTS (
-                      SELECT 1 FROM reviews assignment_review
-                       WHERE assignment_review.target_type = 'source-item-version-assignment'
-                         AND assignment_review.target_id = items.latest_version_id
-                    )
-                    AND NOT EXISTS (
-                      SELECT 1 FROM source_item_version_entities frozen
-                       WHERE frozen.source_item_version_id = items.latest_version_id
-                         AND frozen.entity_type = 'candidacy'
-                    )
-                    THEN 1 ELSE 0 END AS association_review_only,
-                  COALESCE((
-                    SELECT json_group_array(json_object(
-                      'candidacyId', candidate_matches.entity_id,
-                      'fullName', people.full_name,
-                      'constituencyName', constituencies.name,
-                      'matchMethod', candidate_matches.match_method,
-                      'mentionText', candidate_matches.mention_text,
-                      'confidence', candidate_matches.confidence
-                    ))
-                    FROM item_entities candidate_matches
-                    JOIN candidacies ON candidacies.id = candidate_matches.entity_id
-                    JOIN people ON people.id = candidacies.person_id
-                    JOIN constituencies ON constituencies.id = candidacies.constituency_id
-                    WHERE candidate_matches.item_id = items.id
-                      AND candidate_matches.entity_type = 'candidacy'
-                      AND candidacies.declaration_status != 'source-removed'
-                  ), '[]') AS candidate_associations_json,
-                  GROUP_CONCAT(CASE WHEN entities.entity_type = 'candidacy' THEN entities.entity_id END) AS candidate_ids
-           FROM source_items items
-           JOIN sources ON sources.id = items.source_id
-           LEFT JOIN item_entities entities ON entities.item_id = items.id
-           WHERE items.review_state IN ('unreviewed', 'needs-update')
-              OR (
-                items.review_state = 'approved'
-                AND EXISTS (
-                  SELECT 1 FROM reviews source_review
-                   WHERE source_review.target_type = 'source-item-version'
-                     AND source_review.target_id = items.latest_version_id
-                     AND source_review.decision = 'approved'
-                )
-                AND EXISTS (
-                  SELECT 1
-                    FROM item_entities candidate_match
-                    JOIN candidacies current_candidate
-                      ON current_candidate.id = candidate_match.entity_id
-                     AND current_candidate.declaration_status != 'source-removed'
-                   WHERE candidate_match.item_id = items.id
-                     AND candidate_match.entity_type = 'candidacy'
-                )
-                AND NOT EXISTS (
-                  SELECT 1 FROM reviews assignment_review
-                   WHERE assignment_review.target_type = 'source-item-version-assignment'
-                     AND assignment_review.target_id = items.latest_version_id
-                )
-                AND NOT EXISTS (
-                  SELECT 1 FROM source_item_version_entities frozen
-                   WHERE frozen.source_item_version_id = items.latest_version_id
-                     AND frozen.entity_type = 'candidacy'
-                )
-              )
-           GROUP BY items.id
-           ORDER BY COALESCE(items.published_at, items.first_seen_at) DESC
-           LIMIT 30`,
+          `WITH review_candidates AS (
+             SELECT items.id, items.item_type, items.title, items.summary,
+                    items.canonical_url, items.first_seen_at, items.published_at,
+                    items.review_state, items.publication_state, items.content_hash,
+                    items.latest_snapshot_id, items.latest_version_id,
+                    sources.id AS source_id, sources.name AS source_name,
+                    sources.feed_type AS source_feed_type,
+                    (SELECT frozen.canonical_reason_json
+                       FROM source_item_version_collection_assessments frozen
+                      WHERE frozen.source_item_version_id = items.latest_version_id)
+                      AS canonical_reason_json,
+                    (SELECT frozen.canonical_reason_hash
+                       FROM source_item_version_collection_assessments frozen
+                      WHERE frozen.source_item_version_id = items.latest_version_id)
+                      AS canonical_reason_hash,
+                    (SELECT frozen.route
+                       FROM source_item_version_collection_assessments frozen
+                      WHERE frozen.source_item_version_id = items.latest_version_id)
+                      AS collection_route,
+                    (SELECT frozen.ruleset_id
+                       FROM source_item_version_collection_assessments frozen
+                      WHERE frozen.source_item_version_id = items.latest_version_id)
+                      AS collection_ruleset_id,
+                    CASE WHEN items.review_state = 'approved'
+                      AND EXISTS (
+                        SELECT 1 FROM reviews source_review
+                         WHERE source_review.target_type = 'source-item-version'
+                           AND source_review.target_id = items.latest_version_id
+                           AND source_review.decision = 'approved'
+                      )
+                      AND EXISTS (
+                        SELECT 1
+                          FROM item_entities candidate_match
+                          JOIN candidacies current_candidate
+                            ON current_candidate.id = candidate_match.entity_id
+                           AND current_candidate.declaration_status != 'source-removed'
+                         WHERE candidate_match.item_id = items.id
+                           AND candidate_match.entity_type = 'candidacy'
+                      )
+                      AND NOT EXISTS (
+                        SELECT 1 FROM reviews assignment_review
+                         WHERE assignment_review.target_type = 'source-item-version-assignment'
+                           AND assignment_review.target_id = items.latest_version_id
+                      )
+                      AND NOT EXISTS (
+                        SELECT 1 FROM source_item_version_entities frozen
+                         WHERE frozen.source_item_version_id = items.latest_version_id
+                           AND frozen.entity_type = 'candidacy'
+                      )
+                      THEN 1 ELSE 0 END AS association_review_only,
+                    COALESCE((
+                      SELECT json_group_array(json_object(
+                        'candidacyId', candidate_matches.entity_id,
+                        'fullName', people.full_name,
+                        'constituencyName', constituencies.name,
+                        'matchMethod', candidate_matches.match_method,
+                        'mentionText', candidate_matches.mention_text,
+                        'confidence', candidate_matches.confidence
+                      ))
+                      FROM item_entities candidate_matches
+                      JOIN candidacies ON candidacies.id = candidate_matches.entity_id
+                      JOIN people ON people.id = candidacies.person_id
+                      JOIN constituencies ON constituencies.id = candidacies.constituency_id
+                      WHERE candidate_matches.item_id = items.id
+                        AND candidate_matches.entity_type = 'candidacy'
+                        AND candidacies.declaration_status != 'source-removed'
+                    ), '[]') AS candidate_associations_json,
+                    COALESCE((
+                      SELECT json_group_array(json_object(
+                        'id', topic_matches.entity_id,
+                        'label', topics.name,
+                        'matchMethod', topic_matches.match_method,
+                        'mentionText', topic_matches.mention_text,
+                        'confidence', topic_matches.confidence
+                      ))
+                      FROM item_entities topic_matches
+                      JOIN policy_topics topics ON topics.id = topic_matches.entity_id
+                      WHERE topic_matches.item_id = items.id
+                        AND topic_matches.entity_type = 'topic'
+                    ), '[]') AS topic_associations_json,
+                    COALESCE((
+                      SELECT json_group_array(json_object(
+                        'id', constituency_matches.entity_id,
+                        'label', constituencies.name,
+                        'matchMethod', constituency_matches.match_method,
+                        'mentionText', constituency_matches.mention_text,
+                        'confidence', constituency_matches.confidence
+                      ))
+                      FROM item_entities constituency_matches
+                      JOIN constituencies ON constituencies.id = constituency_matches.entity_id
+                      WHERE constituency_matches.item_id = items.id
+                        AND constituency_matches.entity_type = 'constituency'
+                    ), '[]') AS constituency_associations_json,
+                    (SELECT GROUP_CONCAT(candidate_ids.entity_id)
+                       FROM item_entities candidate_ids
+                      WHERE candidate_ids.item_id = items.id
+                        AND candidate_ids.entity_type = 'candidacy') AS candidate_ids,
+                    ${collectionRouteExpression} AS collection_route_hint
+             FROM source_items items
+             JOIN sources ON sources.id = items.source_id
+             WHERE ${pendingReviewPredicate}
+           )
+           SELECT * FROM review_candidates
+            ORDER BY CASE collection_route_hint
+              WHEN 'evidence-review' THEN 0
+              WHEN 'context-monitoring' THEN 1
+              ELSE 2 END,
+              COALESCE(published_at, first_seen_at) DESC`,
         )
         .all<EvidenceReviewItemRow>(),
       db
@@ -429,35 +585,21 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
             (SELECT COUNT(*) FROM source_items) AS source_items,
             (SELECT COUNT(*) FROM source_snapshots) AS snapshots,
             (SELECT COUNT(*) FROM source_items items
-             WHERE items.review_state IN ('unreviewed', 'needs-update')
-                OR (
-                  items.review_state = 'approved'
-                  AND EXISTS (
-                    SELECT 1 FROM reviews source_review
-                     WHERE source_review.target_type = 'source-item-version'
-                       AND source_review.target_id = items.latest_version_id
-                       AND source_review.decision = 'approved'
-                  )
-                  AND EXISTS (
-                    SELECT 1
-                      FROM item_entities candidate_match
-                      JOIN candidacies current_candidate
-                        ON current_candidate.id = candidate_match.entity_id
-                       AND current_candidate.declaration_status != 'source-removed'
-                     WHERE candidate_match.item_id = items.id
-                       AND candidate_match.entity_type = 'candidacy'
-                  )
-                  AND NOT EXISTS (
-                    SELECT 1 FROM reviews assignment_review
-                     WHERE assignment_review.target_type = 'source-item-version-assignment'
-                       AND assignment_review.target_id = items.latest_version_id
-                  )
-                  AND NOT EXISTS (
-                    SELECT 1 FROM source_item_version_entities frozen
-                     WHERE frozen.source_item_version_id = items.latest_version_id
-                       AND frozen.entity_type = 'candidacy'
-                  )
-                )) AS pending_review,
+             JOIN sources ON sources.id = items.source_id
+             WHERE ${pendingReviewPredicate}) AS pending_review,
+            (SELECT COUNT(*) FROM source_items items
+             JOIN sources ON sources.id = items.source_id
+             WHERE ${pendingReviewPredicate}
+               AND ${directEvidencePredicate}) AS pending_evidence_review,
+            (SELECT COUNT(*) FROM source_items items
+             JOIN sources ON sources.id = items.source_id
+             WHERE ${pendingReviewPredicate}
+               AND ${contextualEvidencePredicate}) AS pending_context_monitoring,
+            (SELECT COUNT(*) FROM source_items items
+             JOIN sources ON sources.id = items.source_id
+             WHERE ${pendingReviewPredicate}
+               AND NOT ${directEvidencePredicate}
+               AND NOT ${contextualEvidencePredicate}) AS pending_broad_monitoring,
             (SELECT COUNT(*) FROM source_items
              WHERE review_state IN ('unreviewed', 'needs-update')) AS pending_source_version_review,
             (SELECT COUNT(*) FROM candidate_profiles profiles
@@ -513,11 +655,54 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
     ]);
 
   const reviewItems = await Promise.all(reviewRows.results.map(async (item) => {
-    const { candidate_associations_json: candidateAssociationsJson, ...reviewItem } = item;
+    const {
+      candidate_associations_json: candidateAssociationsJson,
+      canonical_reason_hash: canonicalReasonHash,
+      canonical_reason_json: canonicalReasonJson,
+      collection_route: collectionRoute,
+      collection_route_hint: _collectionRouteHint,
+      collection_ruleset_id: collectionRulesetId,
+      constituency_associations_json: constituencyAssociationsJson,
+      topic_associations_json: topicAssociationsJson,
+      ...reviewItem
+    } = item;
+    void _collectionRouteHint;
     const candidateAssociations = parseCandidateAssociations(candidateAssociationsJson);
+    const constituencyAssociations = parseCollectionSignals(constituencyAssociationsJson);
+    const topicAssociations = parseCollectionSignals(topicAssociationsJson);
+    const frozenCollectionReason = await readVerifiedCollectionReason({
+      canonical_reason_hash: canonicalReasonHash,
+      canonical_reason_json: canonicalReasonJson,
+      collection_route: collectionRoute,
+      collection_ruleset_id: collectionRulesetId,
+    });
+    const collectionReason = frozenCollectionReason ?? projectCollectionReason({
+      candidates: candidateAssociations.map((candidate) => ({
+        confidence: candidate.confidence,
+        id: candidate.candidacyId,
+        label: candidate.fullName,
+        matchMethod: candidate.matchMethod,
+        mentionText: candidate.mentionText,
+      })),
+      constituencies: constituencyAssociations,
+      itemType: reviewItem.item_type,
+      sourceFeedType: reviewItem.source_feed_type,
+      sourceId: reviewItem.source_id,
+      sourceName: reviewItem.source_name,
+      summary: reviewItem.summary,
+      title: reviewItem.title,
+      topics: topicAssociations,
+    });
     return {
       ...reviewItem,
       candidateAssociations,
+      collectionReason,
+      collectionReasonHash: frozenCollectionReason ? canonicalReasonHash : null,
+      collectionReasonRuleset: frozenCollectionReason?.ruleId ?? COLLECTION_ROUTING_RULE,
+      collectionReasonState: frozenCollectionReason
+        ? "frozen" as const
+        : "not-yet-frozen" as const,
+      constituencyAssociations,
       candidateSuggestionFingerprint: await fingerprintCandidateSuggestions(
         candidateAssociations.map((candidate) => ({
           candidacyId: candidate.candidacyId,
@@ -526,6 +711,7 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
           mentionText: candidate.mentionText,
         })),
       ),
+      topicAssociations,
     };
   }));
 
@@ -540,10 +726,13 @@ export async function getEvidenceDashboard(): Promise<EvidenceDashboard> {
       candidates: countRow?.candidates ?? 0,
       claims: countRow?.claims ?? 0,
       pendingCandidateReview: countRow?.pending_candidate_review ?? 0,
+      pendingBroadMonitoring: countRow?.pending_broad_monitoring ?? 0,
+      pendingContextMonitoring: countRow?.pending_context_monitoring ?? 0,
       pendingEditorial: (countRow?.pending_editorial ?? 0) + Math.max(
         0,
         (countRow?.pending_review ?? 0) - (countRow?.pending_source_version_review ?? 0),
       ),
+      pendingEvidenceReview: countRow?.pending_evidence_review ?? 0,
       pendingReview: countRow?.pending_review ?? 0,
       parsedCandidateProfiles: countRow?.parsed_candidate_profiles ?? 0,
       publishableCandidatePortraits: countRow?.publishable_candidate_portraits ?? 0,

@@ -393,7 +393,74 @@
 .cardFooter a, .evidenceInboxCard > a { color: #0d6970; font-size: 9px; font-weight: 850; }
 .cardFooterLinks { align-items: center; display: flex; gap: 9px; }
 
-.evidenceInboxGrid { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.reviewRouteBar {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.reviewRouteBar button {
+  background: #fffdf7;
+  border: 1px solid rgba(18, 50, 56, .2);
+  border-radius: 10px;
+  color: #123238;
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+  grid-template-columns: 1fr auto;
+  min-height: 96px;
+  padding: 15px;
+  text-align: left;
+}
+
+.reviewRouteBar button[aria-pressed="true"] {
+  background: #123238;
+  border-color: #123238;
+  color: #fffdf7;
+}
+
+.reviewRouteBar button > span { font-size: 12px; font-weight: 850; }
+.reviewRouteBar button > strong { color: #cf4e38; font-family: Georgia, "Times New Roman", serif; font-size: 23px; font-weight: 500; line-height: .8; }
+.reviewRouteBar button[aria-pressed="true"] > strong { color: #f0cd68; }
+.reviewRouteBar button > small { color: #607477; font-size: 11px; grid-column: 1 / 3; line-height: 1.45; }
+.reviewRouteBar button[aria-pressed="true"] > small { color: rgba(255, 253, 247, .7); }
+
+.routeSummary {
+  align-items: baseline;
+  border-bottom: 1px solid rgba(18, 50, 56, .14);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 2px 2px 12px;
+}
+
+.routeSummary span { color: #0d6970; font-size: 11px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.routeSummary p { color: #607477; font-size: 12px; margin: 0; text-align: right; }
+
+.reviewPagination {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  padding: 8px 0 2px;
+}
+
+.reviewPagination button {
+  background: #fffdf7;
+  border: 1px solid rgba(18, 50, 56, .25);
+  border-radius: 8px;
+  color: #123238;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  min-height: 44px;
+  padding: 9px 14px;
+}
+
+.reviewPagination button:disabled { cursor: not-allowed; opacity: .42; }
+.reviewPagination span { color: #607477; font-size: 11px; }
+
+.evidenceInboxGrid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .evidenceInboxCard { background: #fffdf7; border: 1px solid rgba(18, 50, 56, .17); border-radius: 11px; display: flex; flex-direction: column; min-height: 285px; padding: 19px; }
 .inboxSource { color: #0d6970; font-size: 9px; font-weight: 800; margin: 13px 0 8px; text-transform: uppercase; }
 .evidenceInboxCard h3 { font-family: Georgia, "Times New Roman", serif; font-size: 21px; font-weight: 500; line-height: 1.15; margin: 0 0 10px; }
@@ -401,6 +468,30 @@
 .evidenceMeta { align-items: center; border-top: 1px solid rgba(18, 50, 56, .13); display: flex; gap: 8px; justify-content: space-between; margin-top: auto; padding: 12px 0; }
 .evidenceMeta span { color: #617578; font-size: 8px; }
 .evidenceMeta code { font-size: 8px; }
+
+.collectionReason {
+  background: #f3eee4;
+  border: 1px solid rgba(18, 50, 56, .13);
+  border-radius: 9px;
+  display: grid;
+  gap: 9px;
+  margin: 2px 0 14px;
+  padding: 12px;
+}
+
+.collectionReasonHeading { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+.collectionReasonHeading > strong { color: #123238; font-size: 12px; }
+.collectionReasonHeading > span { background: #e2e9df; border-radius: 999px; color: #35595d; font-size: 10px; font-weight: 850; padding: 5px 7px; text-transform: uppercase; }
+.collectionReason > p { color: #526a6e; font-size: 12px; line-height: 1.5; margin: 0; }
+.collectionReason dl { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; margin: 0; }
+.collectionReason dl > div { border-top: 1px solid rgba(18, 50, 56, .12); display: grid; gap: 3px; padding-top: 7px; }
+.collectionReason dt { color: #6a7c7f; font-size: 10px; text-transform: uppercase; }
+.collectionReason dd { color: #244b50; font-size: 11px; font-weight: 800; margin: 0; }
+.collectionReason code { font-size: 10px; }
+.collectionReason ul { display: grid; gap: 5px; list-style: none; margin: 0; padding: 0; }
+.collectionReason li { background: #fffdf7; border-radius: 7px; display: grid; gap: 2px; padding: 7px 8px; }
+.collectionReason li strong { color: #274a4f; font-size: 11px; }
+.collectionReason li span, .collectionReason > small { color: #667a7d; font-size: 10px; line-height: 1.4; }
 
 .reviewDecision,
 .reviewDecisionUnavailable,
@@ -648,7 +739,13 @@
 .fullRunList dt { color: #6a7c7f; font-size: 7px; text-transform: uppercase; }
 .fullRunList dd { font-family: Georgia, "Times New Roman", serif; font-size: 17px; margin: 3px 0 0; }
 .fullRunList time { color: #607477; font-size: 9px; text-align: right; }
-.fullRunList article > p { background: #ffd8ce; border-radius: 10px; color: #813725; font-size: 8px; grid-column: 1 / 4; margin: 0; overflow-wrap: anywhere; padding: 9px; }
+.resolvedRun { background: rgba(44, 138, 98, .035); }
+.fullRunList article > .runIssue { align-items: stretch; background: #f7e4de; border-radius: 10px; color: #71392f; display: grid; gap: 8px; grid-column: 1 / 4; padding: 11px 12px; }
+.resolvedRun > .runIssue { background: #e8f0e8; color: #315b49; }
+.runIssue p { font-size: 11px; line-height: 1.5; margin: 0; }
+.runIssue details { border-top: 1px solid currentColor; padding-top: 7px; }
+.runIssue summary { cursor: pointer; font-size: 10px; font-weight: 800; }
+.runIssue code { display: block; font-size: 10px; line-height: 1.45; margin-top: 7px; max-height: 180px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
 
 .emptyState,
 .unavailable {
@@ -692,10 +789,13 @@
   .transcriptModel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filterBar { grid-template-columns: 1fr; }
   .filterBar > strong { grid-column: 1; }
+  .reviewRouteBar { grid-template-columns: 1fr; }
+  .routeSummary { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .routeSummary p { text-align: left; }
   .candidateCoverageGrid, .evidenceInboxGrid { grid-template-columns: 1fr; }
   .fullRunList > article { align-items: start; grid-template-columns: 1fr; }
   .fullRunList time { text-align: left; }
-  .fullRunList article > p { grid-column: 1; }
+  .fullRunList article > .runIssue { grid-column: 1; }
 }
 
 @media (max-width: 520px) {
@@ -713,6 +813,7 @@
   .candidateCoverageBody { padding: 13px; }
   .candidateCoverageBody h3 { font-size: 21px; }
   .coverageMetrics { grid-template-columns: 1fr; }
+  .collectionReason dl { grid-template-columns: 1fr; }
   .transcriptRoute { align-items: stretch; flex-direction: column; }
   .transcriptRoute i { rotate: 90deg; text-align: center; }
   .fullRunList dl { grid-template-columns: repeat(5, minmax(45px, 1fr)); overflow-x: auto; }

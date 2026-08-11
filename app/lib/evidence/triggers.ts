@@ -5,11 +5,15 @@ import {
   sourceItemVersionEntityInsertGuardSql,
   sourceItemVersionEntityNoDeleteSql,
   sourceItemVersionEntityNoUpdateSql,
-} from "./candidate-intelligence-sql";
+} from "./candidate-intelligence-sql.ts";
 import {
   sourceItemCandidateAssignmentReviewGuardSql,
   sourceItemVersionReviewGuardSql,
-} from "./review-sql";
+} from "./review-sql.ts";
+import {
+  collectionAssessmentNoDeleteSql,
+  collectionAssessmentNoUpdateSql,
+} from "./collection-assessment.ts";
 
 const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS audit_event_chain_guard
@@ -51,6 +55,8 @@ const evidenceTriggerSql = [
   `CREATE TRIGGER IF NOT EXISTS source_item_versions_no_delete
    BEFORE DELETE ON source_item_versions
    BEGIN SELECT RAISE(ABORT, 'source item versions are immutable'); END`,
+  collectionAssessmentNoUpdateSql,
+  collectionAssessmentNoDeleteSql,
   `CREATE TRIGGER IF NOT EXISTS candidate_profile_observations_no_update
    BEFORE UPDATE ON candidate_profile_observations
    BEGIN SELECT RAISE(ABORT, 'candidate profile observations are immutable'); END`,

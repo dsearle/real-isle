@@ -1,4 +1,4 @@
-import { randomId, sha256Hex, stableJson } from "./integrity";
+import { randomId, sha256Hex, stableJson } from "./integrity.ts";
 
 const AUDIT_SCHEMA = "real-isle.audit.v1";
 
@@ -16,12 +16,18 @@ type AuditHead = {
   next_sequence: number;
 };
 
-export type AppendedAuditEvent = { eventHash: string; id: string; sequence: number };
+export type AppendedAuditEvent = {
+  createdAt: string;
+  eventHash: string;
+  id: string;
+  sequence: number;
+};
 
 export async function appendAuditEventWithStatements(
   db: D1Database,
   input: AuditEventInput,
   buildStatements: (event: AppendedAuditEvent) => D1PreparedStatement[],
+  buildDependentStatements: (event: AppendedAuditEvent) => D1PreparedStatement[] = () => [],
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const head = await db
@@ -49,7 +55,12 @@ export async function appendAuditEventWithStatements(
       }),
     );
     const id = randomId("audit");
-    const event = { eventHash, id, sequence: head.next_sequence } satisfies AppendedAuditEvent;
+    const event = {
+      createdAt,
+      eventHash,
+      id,
+      sequence: head.next_sequence,
+    } satisfies AppendedAuditEvent;
 
     try {
       await db.batch([
@@ -74,6 +85,7 @@ export async function appendAuditEventWithStatements(
           eventHash,
           createdAt,
         ),
+        ...buildDependentStatements(event),
       ]);
       return event;
     } catch (error) {

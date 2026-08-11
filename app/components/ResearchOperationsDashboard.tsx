@@ -7,10 +7,13 @@ import type {
   EvidenceReviewItem,
   TranscriptQueueItem,
 } from "../lib/evidence/status";
+import type { CollectionRoute, CollectionSignal } from "../lib/evidence/collection-reason";
 import styles from "./ResearchOperationsDashboard.module.css";
 
 type WorkspaceTab = "overview" | "candidates" | "evidence" | "transcripts" | "sources";
 type ReviewDecision = "approved" | "rejected";
+
+const EVIDENCE_PAGE_SIZE = 18;
 
 type ReviewReceipt = {
   auditEventHash: string;
@@ -32,6 +35,28 @@ const workspaceTabs: Array<{ id: WorkspaceTab; label: string }> = [
   { id: "evidence", label: "Evidence inbox" },
   { id: "transcripts", label: "Transcripts" },
   { id: "sources", label: "Sources & runs" },
+];
+
+const collectionRoutes: Array<{
+  description: string;
+  id: CollectionRoute;
+  label: string;
+}> = [
+  {
+    description: "Candidate, dedicated election-source or election-language matches",
+    id: "evidence-review",
+    label: "Election leads",
+  },
+  {
+    description: "Tracked topics or constituencies without a direct election signal",
+    id: "context-monitoring",
+    label: "Context monitor",
+  },
+  {
+    description: "Retained source captures with no current relevance match",
+    id: "broad-monitoring",
+    label: "Broad captures",
+  },
 ];
 
 function formatTime(value: string | null) {
@@ -58,6 +83,42 @@ function readableState(value: string | null) {
 
 function shortHash(value: string | null) {
   return value ? `${value.slice(0, 10)}…${value.slice(-6)}` : "Not captured";
+}
+
+function readableCollectorMessage(value: string) {
+  if (value.includes("observations.snapshot_id")) {
+    return "The candidate-directory version lookup was incompatible with SQLite in this run.";
+  }
+  if (value.includes("ON CONFLICT clause does not match")) {
+    return "An older storage-index mismatch prevented records from being processed in this run.";
+  }
+  if (/timed? out|timeout/i.test(value)) {
+    return "The publisher did not respond before the collector deadline.";
+  }
+  if (/not a supported RSS|feed contains no/i.test(value)) {
+    return "The publisher response was not a usable feed.";
+  }
+  return value.replace(/^D1_ERROR:\s*/i, "Database operation failed: ").slice(0, 220);
+}
+
+function summarizeCollectorError(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed) || parsed.length === 0) return readableCollectorMessage(value);
+    const entries = parsed.filter((entry): entry is Record<string, unknown> => (
+      Boolean(entry) && typeof entry === "object" && !Array.isArray(entry)
+    ));
+    const firstMessage = entries.find((entry) => typeof entry.message === "string")?.message;
+    const stages = [...new Set(entries
+      .map((entry) => typeof entry.stage === "string" ? readableState(entry.stage) : null)
+      .filter((stage): stage is string => Boolean(stage)))];
+    const stageText = stages.length ? ` during ${stages.join(", ")}` : "";
+    return `${entries.length} record${entries.length === 1 ? "" : "s"} failed${stageText}. ${
+      typeof firstMessage === "string" ? readableCollectorMessage(firstMessage) : "See the technical audit detail."
+    }`;
+  } catch {
+    return readableCollectorMessage(value);
+  }
 }
 
 function StatePill({ state, tone = "neutral" }: { state: string; tone?: "good" | "neutral" | "warn" }) {
@@ -162,7 +223,8 @@ function ReviewDecisionControls({
   const [rationale, setRationale] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const actionable = Boolean(item.latest_version_id && item.content_hash);
+  const collectionReasonFrozen = item.collectionReasonState === "frozen" && Boolean(item.collectionReasonHash);
+  const actionable = Boolean(item.latest_version_id && item.content_hash && collectionReasonFrozen);
 
   function openDecision(nextDecision: ReviewDecision) {
     setAssignmentOptionIds(initialCandidateIds);
@@ -190,7 +252,13 @@ function ReviewDecisionControls({
 
   async function submitDecision(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!decision || !item.latest_version_id || !item.content_hash) return;
+    if (
+      !decision
+      || !item.latest_version_id
+      || !item.content_hash
+      || !item.collectionReasonHash
+      || item.collectionReasonState !== "frozen"
+    ) return;
     setPending(true);
     setError(null);
     try {
@@ -198,6 +266,8 @@ function ReviewDecisionControls({
         body: JSON.stringify({
           candidateSuggestionFingerprint: item.candidateSuggestionFingerprint,
           decision,
+          expectedCollectionReasonHash: item.collectionReasonHash,
+          expectedCollectionRuleset: item.collectionReasonRuleset,
           expectedContentHash: item.content_hash,
           expectedVersionId: item.latest_version_id,
           itemId: item.id,
@@ -253,7 +323,9 @@ function ReviewDecisionControls({
   if (!actionable) {
     return (
       <div className={styles.reviewDecisionUnavailable}>
-        This record has no immutable version yet, so it cannot be reviewed safely.
+        {item.latest_version_id && item.content_hash
+          ? "This collection reason has not yet been frozen to the source version. Review will unlock after the collector records its audited assessment."
+          : "This record has no immutable version yet, so it cannot be reviewed safely."}
       </div>
     );
   }
@@ -393,6 +465,53 @@ function ReviewDecisionControls({
   );
 }
 
+function CollectionSignalRow({ kind, signal }: { kind: string; signal: CollectionSignal }) {
+  return (
+    <li>
+      <strong>{kind}: {signal.label}</strong>
+      <span>Matched “{signal.mentionText}” · {readableState(signal.matchMethod)} · {Math.round(signal.confidence * 100)}%</span>
+    </li>
+  );
+}
+
+function CollectionReasonPanel({ item }: { item: EvidenceReviewItem }) {
+  const reason = item.collectionReason;
+  const signals = [
+    ...reason.candidates.map((signal) => ({ kind: "Candidate", signal })),
+    ...reason.electionSignals.map((signal) => ({ kind: "Election signal", signal })),
+    ...reason.topics.map((signal) => ({ kind: "Topic", signal })),
+    ...reason.constituencies.map((signal) => ({ kind: "Constituency", signal })),
+  ];
+  return (
+    <section aria-label="Reason for collection" className={styles.collectionReason}>
+      <div className={styles.collectionReasonHeading}>
+        <strong>Why this was collected</strong>
+        <span>{reason.routeLabel}</span>
+      </div>
+      <p>{reason.reason}</p>
+      <dl>
+        <div><dt>Source scope</dt><dd>{reason.sourceScope.label}</dd></div>
+        <div><dt>Routing rule</dt><dd><code>{reason.ruleId}</code></dd></div>
+        <div>
+          <dt>Assessment state</dt>
+          <dd>{item.collectionReasonState === "frozen" ? "Frozen to source version" : "Not yet frozen"}</dd>
+        </div>
+        <div>
+          <dt>Assessment fingerprint</dt>
+          <dd><code>{item.collectionReasonHash ? shortHash(item.collectionReasonHash) : "Pending"}</code></dd>
+        </div>
+      </dl>
+      {signals.length ? (
+        <ul>{signals.map(({ kind, signal }) => (
+          <CollectionSignalRow key={`${kind}:${signal.id}`} kind={kind} signal={signal} />
+        ))}</ul>
+      ) : (
+        <small>No relevance signal was detected. The capture remains available for audit and any future reconsideration would require a separate audited decision.</small>
+      )}
+    </section>
+  );
+}
+
 function EvidenceInboxCard({
   candidateOptions,
   item,
@@ -409,6 +528,10 @@ function EvidenceInboxCard({
       <div className={styles.cardStateRow}>
         <StatePill state={item.item_type} />
         <StatePill
+          state={item.collectionReason.routeLabel}
+          tone={item.collectionReason.route === "evidence-review" ? "good" : "neutral"}
+        />
+        <StatePill
           state={receipt?.reviewKind === "source-version" ? receipt.reviewState : item.review_state}
           tone={(receipt?.reviewKind === "source-version" ? receipt.reviewState : item.review_state) === "approved" ? "good" : "warn"}
         />
@@ -417,6 +540,7 @@ function EvidenceInboxCard({
       <p className={styles.inboxSource}>{item.source_name} · {formatTime(item.published_at ?? item.first_seen_at)}</p>
       <h3>{item.title}</h3>
       <p>{item.summary || "No publisher summary was supplied. Open the captured source record for inspection."}</p>
+      <CollectionReasonPanel item={item} />
       <div className={styles.evidenceMeta}>
         <span>{item.candidateAssociations.length
           ? item.candidateAssociations.map((candidate) => candidate.fullName).join(", ")
@@ -599,24 +723,76 @@ function EvidencePanel({
   receipts: Record<string, ReviewReceipt>;
   onDecided: (receipt: ReviewReceipt) => void;
 }) {
+  const [collectionRoute, setCollectionRoute] = useState<CollectionRoute>("evidence-review");
+  const [page, setPage] = useState(0);
+  const routeCounts: Record<CollectionRoute, number> = {
+    "broad-monitoring": dashboard.counts.pendingBroadMonitoring,
+    "context-monitoring": dashboard.counts.pendingContextMonitoring,
+    "evidence-review": dashboard.counts.pendingEvidenceReview,
+  };
+  const routedItems = dashboard.reviewItems.filter(
+    (item) => item.collectionReason.route === collectionRoute,
+  );
+  const pageCount = Math.max(1, Math.ceil(routedItems.length / EVIDENCE_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageStart = currentPage * EVIDENCE_PAGE_SIZE;
+  const reviewItems = routedItems.slice(pageStart, pageStart + EVIDENCE_PAGE_SIZE);
+  const selectedRoute = collectionRoutes.find((route) => route.id === collectionRoute);
   return (
     <div className={styles.panelStack}>
       <section className={styles.panelIntro}>
-        <div><span>Unreviewed source stream</span><h2>The latest material waiting for a human decision.</h2></div>
-        <p>These records are private. The source URL, capture pointer and content hash remain attached even if the publisher later changes or removes the page.</p>
+        <div><span>Routed source stream</span><h2>Review election material without losing the wider record.</h2></div>
+        <p>The priority queue contains direct election leads. Topic-only and unmatched island news remain captured and auditable in separate views instead of being presented as candidate evidence.</p>
       </section>
-      {dashboard.reviewItems.length ? (
-        <div className={styles.evidenceInboxGrid}>{dashboard.reviewItems.map((item) => (
-          <EvidenceInboxCard
-            candidateOptions={dashboard.candidateProfiles}
-            item={item}
-            key={item.id}
-            onDecided={onDecided}
-            receipt={item.latest_version_id ? receipts[item.latest_version_id] : undefined}
-          />
-        ))}</div>
+      <nav aria-label="Evidence collection routes" className={styles.reviewRouteBar}>
+        {collectionRoutes.map((route) => (
+          <button
+            aria-pressed={collectionRoute === route.id}
+            key={route.id}
+            onClick={() => {
+              setCollectionRoute(route.id);
+              setPage(0);
+            }}
+            type="button"
+          >
+            <span>{route.label}</span>
+            <strong>{routeCounts[route.id]}</strong>
+            <small>{route.description}</small>
+          </button>
+        ))}
+      </nav>
+      <div className={styles.routeSummary}>
+        <span>{selectedRoute?.label}</span>
+        <p>{selectedRoute?.description}. {routedItems.length
+          ? `Showing ${pageStart + 1}–${pageStart + reviewItems.length} of ${routedItems.length} pending captures.`
+          : "No pending captures."}</p>
+      </div>
+      {reviewItems.length ? (
+        <>
+          <div className={styles.evidenceInboxGrid}>{reviewItems.map((item) => (
+            <EvidenceInboxCard
+              candidateOptions={dashboard.candidateProfiles}
+              item={item}
+              key={item.id}
+              onDecided={onDecided}
+              receipt={item.latest_version_id ? receipts[item.latest_version_id] : undefined}
+            />
+          ))}</div>
+          {pageCount > 1 ? (
+            <nav aria-label={`${selectedRoute?.label} pages`} className={styles.reviewPagination}>
+              <button disabled={currentPage === 0} onClick={() => setPage((value) => Math.max(0, value - 1))} type="button">← Newer</button>
+              <span>Page {currentPage + 1} of {pageCount}</span>
+              <button disabled={currentPage >= pageCount - 1} onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} type="button">Older →</button>
+            </nav>
+          ) : null}
+        </>
       ) : (
-        <div className={styles.emptyState}><strong>The evidence inbox is clear.</strong><span>New source records will appear after the next successful monitor run.</span></div>
+        <div className={styles.emptyState}>
+          <strong>No captures are loaded in this route.</strong>
+          <span>{routeCounts[collectionRoute] > 0
+            ? "The route count changed while this page was open. Refresh to load the latest records."
+            : "New matching source records will appear after a successful monitor run."}</span>
+        </div>
       )}
     </div>
   );
@@ -657,20 +833,33 @@ function SourcesPanel({ dashboard }: { dashboard: EvidenceDashboard }) {
           <thead><tr><th>Source</th><th>Type / tier</th><th>Last success</th><th>Next check</th><th>Health</th></tr></thead>
           <tbody>{dashboard.sources.map((source) => {
             const warning = source.consecutive_failures > 0 || source.last_error;
-            return <tr key={source.id}><td><strong>{source.name}</strong><small>Every {source.poll_interval_minutes} minutes</small></td><td>{source.feed_type}<small>Tier {source.source_tier}</small></td><td>{formatTime(source.last_success_at)}</td><td>{formatTime(source.next_check_at)}</td><td><span className={warning ? styles.healthWarning : styles.healthGood}>{warning ? `Warning · ${source.consecutive_failures} failures` : "Healthy"}</span>{source.last_error ? <small title={source.last_error}>{source.last_error}</small> : null}</td></tr>;
+            const healthLabel = source.consecutive_failures > 0
+              ? `Needs retry · ${source.consecutive_failures} consecutive failure${source.consecutive_failures === 1 ? "" : "s"}`
+              : source.last_error
+                ? "Needs attention · item errors"
+                : "Healthy";
+            return <tr key={source.id}><td><strong>{source.name}</strong><small>Every {source.poll_interval_minutes} minutes</small></td><td>{source.feed_type}<small>Tier {source.source_tier}</small></td><td>{formatTime(source.last_success_at)}</td><td>{formatTime(source.next_check_at)}</td><td><span className={warning ? styles.healthWarning : styles.healthGood}>{healthLabel}</span>{source.last_error ? <small title={source.last_error}>{summarizeCollectorError(source.last_error)}</small> : null}</td></tr>;
           })}</tbody>
         </table>
       </div>
       <section className={styles.fullRunList}>
         <div className={styles.sectionTitle}><div><span>Run history</span><h2>Recent ingestion results</h2></div></div>
-        {dashboard.recentRuns.map((run) => (
-          <article key={run.id}>
-            <div><i className={run.error_count ? styles.runWarning : styles.runHealthy} aria-hidden="true" /><strong>{run.source_name}</strong><span>{readableState(run.status)}</span></div>
-            <dl><div><dt>Discovered</dt><dd>{run.discovered_count}</dd></div><div><dt>Processed</dt><dd>{run.processed_item_count}</dd></div><div><dt>New</dt><dd>{run.new_item_count}</dd></div><div><dt>Changed</dt><dd>{run.changed_item_count}</dd></div><div><dt>Errors</dt><dd>{run.error_count}</dd></div></dl>
-            <time>{formatTime(run.started_at)}</time>
-            {run.error_summary ? <p>{run.error_summary}</p> : null}
-          </article>
-        ))}
+        {dashboard.recentRuns.map((run) => {
+          const followedByCleanRun = Boolean(run.followed_by_clean_run);
+          return (
+            <article className={followedByCleanRun ? styles.resolvedRun : undefined} key={run.id}>
+              <div><i className={run.error_count && !followedByCleanRun ? styles.runWarning : styles.runHealthy} aria-hidden="true" /><strong>{run.source_name}</strong><span>{followedByCleanRun ? "historical · later clean run" : readableState(run.status)}</span></div>
+              <dl><div><dt>Discovered</dt><dd>{run.discovered_count}</dd></div><div><dt>Processed</dt><dd>{run.processed_item_count}</dd></div><div><dt>New</dt><dd>{run.new_item_count}</dd></div><div><dt>Changed</dt><dd>{run.changed_item_count}</dd></div><div><dt>Errors</dt><dd>{run.error_count}</dd></div></dl>
+              <time>{formatTime(run.started_at)}</time>
+              {run.error_summary ? (
+                <div className={styles.runIssue}>
+                  <p><strong>{followedByCleanRun ? "A later source check completed cleanly." : "This run needs attention."}</strong> {summarizeCollectorError(run.error_summary)}{followedByCleanRun ? " This original result remains here for audit; it does not prove that every failed item was recovered." : ""}</p>
+                  <details><summary>Technical audit detail</summary><code>{run.error_summary}</code></details>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
       </section>
     </div>
   );
@@ -689,6 +878,11 @@ export function ResearchOperationsDashboard({
   if (!dashboard) {
     return <section className={styles.unavailable}><span>Evidence store</span><h2>The research database is not available in this runtime.</h2><p>No unpublished records have been exposed. Apply the current D1 migrations and retry.</p></section>;
   }
+  const decidedEvidenceCount = Object.values(reviewReceipts).filter((receipt) =>
+    dashboard.reviewItems.some((item) =>
+      item.latest_version_id === receipt.versionId
+      && item.collectionReason.route === "evidence-review"),
+  ).length;
 
   return (
     <div className={styles.workspace}>
@@ -705,7 +899,7 @@ export function ResearchOperationsDashboard({
             type="button"
           >
             {tab.label}
-            {tab.id === "evidence" ? <b>{Math.max(0, dashboard.counts.pendingReview - decidedCount)}</b> : null}
+            {tab.id === "evidence" ? <b>{Math.max(0, dashboard.counts.pendingEvidenceReview - decidedEvidenceCount)}</b> : null}
             {tab.id === "transcripts" ? <b>{dashboard.counts.transcriptSources}</b> : null}
           </button>
         ))}

@@ -33,6 +33,58 @@ publisher change creates a new version and returns the item to `needs-update`,
 so a previous approval or rejection can never silently carry over to changed
 content.
 
+### Collection relevance and inbox routing
+
+Collection is deliberately broader than election evidence. Every new or changed
+source version now receives an immutable `collection-routing-v1` assessment in
+the same audited transaction as its observation. The founder workspace shows:
+
+- the approved source scope that caused the item to be captured;
+- candidate, tracked-topic and constituency matches, including the matched text,
+  deterministic method and confidence;
+- any direct election-language match; and
+- a plain-language reason that says whether the item is an election lead,
+  contextual monitoring, or only a retained broad-source capture.
+
+Direct candidate, dedicated election-source and election-language matches enter
+the default Election Evidence queue. Topic-only or constituency-only records
+enter Context Monitor, because a story about health, housing or Onchan is not by
+itself evidence about a candidate. Records with no relevance signal enter Broad
+Captures. The latter two routes remain private, reviewable and preserved for
+audit; routing never deletes a capture or silently upgrades it into evidence.
+The dashboard loads every pending record, ranks Election Evidence before
+Context Monitor and Broad Captures, and presents 18-card client-side pages with
+route filters. A large general-news feed therefore remains visible without
+displacing candidate evidence from the first review page.
+
+The source version, content hash and collection assessment are immutable. The
+`source_item_version_collection_assessments` ledger stores one canonical reason
+JSON document per version, its SHA-256 hash, route, ruleset and the audit event
+that created it. Update and delete guards exist in both the forward migration
+and runtime trigger installer. The creating audit payload commits the reason
+hash/ruleset/route (or a stable digest for a directory batch), so the assessment
+is covered by the hash-linked audit chain rather than merely pointing at it.
+Current pre-review entity matches remain operational projections in
+`item_entities`; their rule and match method are displayed rather than hidden.
+Candidate links selected during approval are then frozen against the exact
+source version in `source_item_version_entities`.
+
+Versions collected before this ledger was introduced appear as visibly
+`not-yet-frozen` and cannot be approved. Every collector invocation processes a
+bounded backlog of up to eight unassessed latest versions, newest pending items
+first. It recomputes deterministic candidate, constituency and topic signals
+from the stored title and summary under the current rules, then commits those
+signals and the assessment in one dedicated `source-item.relevance-assessed`
+audit transaction. An unchanged item encountered directly by its source follows
+the same audited path. Existing assessments are authoritative and are never
+silently rewritten; a future classifier change must use an explicit audited
+override and re-review design.
+
+Approval requests carry the displayed assessment hash and ruleset. The review
+service rejects a provisional, missing or mismatched assessment, and commits
+the accepted assessment identity into the immutable review audit payload and
+idempotent receipt checks.
+
 The initial catalogue monitors Manx Radio election and Island feeds, Manx
 Newscast, BBC Isle of Man, Isle of Man Today, Manx Radio and Isle of Man
 Government YouTube feeds, and Tynwald Hansard. A source should not be activated
@@ -97,13 +149,13 @@ Candidate projections are also closed when their review audit event is written;
 additional candidates cannot be attached later under an already completed
 decision without a new audited editorial cycle.
 
-Sites applies table and index migrations during deployment. The current Sites
-migration runner does not accept SQLite trigger bodies, so every live read/write
-entry point installs or replaces the integrity triggers in one atomic D1 batch
-before it can seed, ingest, review or expose operational state. Ingestion calls
-this guard before its first database write; the review service and founder
-dashboard do the same. This keeps upgraded and newly created databases on the
-same trigger definitions without leaving a write path unguarded.
+Sites applies table, index and forward integrity-trigger migrations during
+deployment. Every live read/write entry point also installs the current trigger
+definitions idempotently in one atomic D1 batch before it can seed, ingest,
+review or expose operational state. Ingestion calls this guard before its first
+database write; the review service and founder dashboard do the same. This keeps
+upgraded and newly created databases on the same guards without leaving a write
+path unprotected.
 
 ## Candidate registry and portraits
 
