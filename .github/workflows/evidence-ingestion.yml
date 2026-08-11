@@ -31,7 +31,7 @@ jobs:
             exit 0
           fi
 
-          curl \
+          response="$(curl \
             --fail-with-body \
             --silent \
             --show-error \
@@ -46,4 +46,21 @@ jobs:
             --header "Idempotency-Key: github:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}" \
             --header "X-Real-Isle-Trigger: scheduler" \
             --data '{"limit":6}' \
-            "${INGEST_URL}"
+            "${INGEST_URL}")"
+
+          jq -e '{
+            sourceRuns: [.runs[] | {
+              sourceId,
+              status,
+              discovered,
+              inserted,
+              changed,
+              errors
+            }],
+            documentOutcomes: (
+              [.documents?.results[]?.outcome]
+              | sort
+              | group_by(.)
+              | map({ outcome: .[0], count: length })
+            )
+          }' <<<"${response}"
