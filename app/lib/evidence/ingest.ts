@@ -3106,9 +3106,7 @@ export async function runEvidenceIngestion(
   // Existing evidence is progressively frozen into the same versioned relevance
   // ledger as new captures.  Keep traffic-triggered work small; the scheduler
   // clears the library steadily without letting one invocation monopolise D1.
-  const assessmentLimit = command.trigger === "scheduler" || command.trigger === "manual"
-    ? 120
-    : 24;
+  const assessmentLimit = command.trigger === "traffic" ? 8 : 24;
   await backfillLegacyCollectionAssessments(
     bindings.DB,
     command.actor,
@@ -3157,9 +3155,13 @@ export async function runEvidenceIngestion(
   }
   // Assess newly collected versions before classifying the library. This lets
   // one scheduled run both discover a record and move it out of the inbox.
-  await backfillLegacyCollectionAssessments(bindings.DB, command.actor, 36);
+  await backfillLegacyCollectionAssessments(
+    bindings.DB,
+    command.actor,
+    command.trigger === "traffic" ? 4 : 12,
+  );
   const automaticReview = await automaticallyReviewEvidenceLibrary(bindings.DB, {
-    limit: command.trigger === "traffic" ? 24 : 120,
+    limit: command.trigger === "traffic" ? 4 : 24,
   });
   // An explicit empty source list is the documented safe “assess only” mode.
   // It must not make any publisher request.  Ordinary scheduled/manual runs

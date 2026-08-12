@@ -34,8 +34,8 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({})) as { limit?: unknown };
   const limit = typeof body.limit === "number" && Number.isInteger(body.limit)
-    ? Math.max(1, Math.min(body.limit, 120))
-    : 120;
+    ? Math.max(1, Math.min(body.limit, 24))
+    : 24;
   try {
     return json({ summary: await automaticallyReviewEvidenceLibrary(getEvidenceBindings().DB, { limit }) });
   } catch (error) {

@@ -1341,20 +1341,33 @@ function EvidencePanel({
     setAutomaticReviewPending(true);
     setAutomaticReviewMessage(null);
     try {
-      const response = await fetch("/api/admin/evidence/auto-review", {
-        body: JSON.stringify({ limit: 120 }),
-        headers: { "content-type": "application/json" },
-        method: "POST",
-      });
-      const result = await response.json() as {
-        error?: string;
-        summary?: { approved: number; conflicts: number; rejected: number; remaining: number; skipped: number };
-      };
-      if (!response.ok || !result.summary) throw new Error(result.error ?? "Automatic review could not be completed.");
-      const { approved, conflicts, rejected, remaining, skipped } = result.summary;
-      setAutomaticReviewMessage(
-        `Automatic triage recorded ${approved} approvals and ${rejected} withholdings.${conflicts ? ` ${conflicts} changed record${conflicts === 1 ? "" : "s"} will retry.` : ""}${skipped ? ` ${skipped} record${skipped === 1 ? "" : "s"} still need a frozen collection assessment.` : ""}${remaining ? ` ${remaining} pending record${remaining === 1 ? "" : "s"} will be handled by the next pass.` : " Inbox cleared."}`,
-      );
+      let approved = 0;
+      let conflicts = 0;
+      let rejected = 0;
+      let remaining = 0;
+      let skipped = 0;
+      // A Worker request has a finite lifetime. Small audited batches are
+      // chained from this user-initiated action until the inbox is clear.
+      for (let pass = 0; pass < 30; pass += 1) {
+        setAutomaticReviewMessage(`Automatic triage is processing batch ${pass + 1}…`);
+        const response = await fetch("/api/admin/evidence/auto-review", {
+          body: JSON.stringify({ limit: 24 }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+        const result = await response.json() as {
+          error?: string;
+          summary?: { approved: number; attempted: number; conflicts: number; rejected: number; remaining: number; skipped: number };
+        };
+        if (!response.ok || !result.summary) throw new Error(result.error ?? "Automatic review could not be completed.");
+        approved += result.summary.approved;
+        conflicts += result.summary.conflicts;
+        rejected += result.summary.rejected;
+        remaining = result.summary.remaining;
+        skipped = result.summary.skipped;
+        if (result.summary.attempted === 0 || remaining === 0) break;
+      }
+      setAutomaticReviewMessage(`Automatic triage recorded ${approved} approvals and ${rejected} withholdings.${conflicts ? ` ${conflicts} changed record${conflicts === 1 ? "" : "s"} will retry.` : ""}${skipped ? ` ${skipped} record${skipped === 1 ? "" : "s"} still need a frozen collection assessment.` : ""}${remaining ? ` ${remaining} pending record${remaining === 1 ? "" : "s"} remain for the next automated pass.` : " Inbox cleared."}`);
       router.refresh();
     } catch (error) {
       setAutomaticReviewMessage(error instanceof Error ? error.message : "Automatic review could not be completed.");
@@ -1397,7 +1410,7 @@ function EvidencePanel({
           <button className={styles.approveButton} disabled={automaticReviewPending} onClick={runAutomaticReview} type="button">
             {automaticReviewPending ? "Classifying…" : "Run automatic triage"}
           </button>
-          <span>Processes up to 120 frozen source versions; scheduled runs continue the backlog.</span>
+          <span>Processes short audited batches until the frozen inbox is clear; scheduled runs handle new captures.</span>
           {automaticReviewMessage ? <p aria-live="polite">{automaticReviewMessage}</p> : null}
         </div>
       </section>
