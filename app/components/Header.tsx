@@ -1,4 +1,6 @@
 /* eslint-disable @next/next/no-html-link-for-pages -- Vinext's deployed client router currently throws on navigation; document links are intentional. */
+import { PublicActivityBadge } from "./PublicActivityBadge";
+
 export function Header() {
   return (
     <header className="site-header">
@@ -17,6 +19,7 @@ export function Header() {
           <a href="/latest">Latest</a>
           <a className="nav-compass" href="/compass">Vote compass</a>
         </nav>
+        <PublicActivityBadge />
         <a className="review-link" href="/admin/review">
           Founder review
         </a>

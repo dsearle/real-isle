@@ -1,0 +1,153 @@
+.badge {
+  align-items: center;
+  background: rgba(252, 251, 247, .78);
+  border: 1px solid rgba(24, 54, 56, .2);
+  border-radius: 8px;
+  color: var(--ink);
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 9px;
+  margin-left: 14px;
+  min-height: 42px;
+  min-width: 186px;
+  padding: 7px 10px;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.badge:hover {
+  background: var(--white);
+  border-color: rgba(24, 54, 56, .34);
+  box-shadow: 0 9px 22px rgba(14, 41, 45, .1);
+  transform: translateY(-1px);
+}
+
+.signal {
+  align-items: center;
+  background: rgba(47, 111, 107, .11);
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 22px;
+  justify-content: center;
+  position: relative;
+  width: 22px;
+}
+
+.signal::before {
+  border: 1px solid currentColor;
+  border-radius: inherit;
+  content: "";
+  inset: 3px;
+  opacity: .22;
+  position: absolute;
+}
+
+.signal i {
+  background: currentColor;
+  border-radius: 999px;
+  height: 7px;
+  position: relative;
+  width: 7px;
+}
+
+.signal i::after {
+  animation: badgePulse 1.8s ease-out infinite;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  content: "";
+  inset: -6px;
+  opacity: .48;
+  position: absolute;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.badge[data-tone="active"] .signal,
+.badge[data-tone="checking"] .signal {
+  color: var(--sea);
+}
+
+.badge[data-tone="checking"] .signal i::after {
+  animation-duration: 1s;
+}
+
+.badge[data-tone="delayed"] .signal,
+.badge[data-tone="initialising"] .signal {
+  color: #8a6415;
+}
+
+.badge[data-tone="reconnecting"] .signal {
+  color: var(--coral-dark);
+}
+
+.badge[data-tone="reconnecting"] .signal i::after,
+.badge[data-tone="delayed"] .signal i::after,
+.badge[data-tone="initialising"] .signal i::after {
+  animation: none;
+  opacity: .2;
+}
+
+@keyframes badgePulse {
+  0% {
+    opacity: .48;
+    scale: .82;
+  }
+  70% {
+    opacity: 0;
+    scale: 1.62;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.62;
+  }
+}
+
+@media (max-width: 1180px) {
+  .badge {
+    min-width: 44px;
+    padding: 8px 10px;
+  }
+
+  .copy {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .badge {
+    bottom: 16px;
+    box-shadow: 0 12px 28px rgba(14, 41, 45, .16);
+    margin: 0;
+    min-height: 46px;
+    position: fixed;
+    right: 16px;
+    z-index: 80;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge,
+  .signal i::after {
+    animation: none;
+    transition: none;
+  }
+}
