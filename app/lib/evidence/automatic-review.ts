@@ -100,6 +100,7 @@ export async function automaticallyReviewEvidenceLibrary(
         reviewKind: "source-version",
         reviewerId: AUTOMATIC_EVIDENCE_REVIEWER_ID,
         reviewerType: "system",
+        skipRuntimeGuardInitialization: true,
         scopeSuggestionFingerprint: item.collectionScopeSuggestionFingerprint,
         topicIds: autoDecision.decision === "approved"
           ? item.topicAssociations.map((association) => association.id).sort()

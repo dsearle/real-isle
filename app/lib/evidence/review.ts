@@ -41,6 +41,8 @@ export type SourceItemReviewInput = {
    * field and therefore remain admin reviews.
    */
   reviewerType?: "admin" | "system";
+  /** Internal batch workers initialise the runtime guards once before looping. */
+  skipRuntimeGuardInitialization?: boolean;
   scopeSuggestionFingerprint: string;
   topicIds: string[];
 };
@@ -541,7 +543,7 @@ export async function reviewSourceItemVersion(
   db: D1Database,
   input: SourceItemReviewInput,
 ): Promise<SourceItemReviewReceipt> {
-  await ensureEvidenceTriggers(db);
+  if (!input.skipRuntimeGuardInitialization) await ensureEvidenceTriggers(db);
   const normalizedInput = {
     ...input,
     candidateIds: [...new Set(input.candidateIds)].sort(),
