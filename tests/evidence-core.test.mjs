@@ -9,6 +9,7 @@ import {
 } from "../app/lib/evidence/candidate-html.ts";
 import { candidateDirectoryStatesSql } from "../app/lib/evidence/candidate-directory-sql.ts";
 import { parseFeed } from "../app/lib/evidence/feed.ts";
+import { parseHistoricalElectionResults } from "../app/lib/evidence/historical-election-results.ts";
 import { sha256Hex, stableJson } from "../app/lib/evidence/integrity.ts";
 import { normalizeReviewRationale } from "../app/lib/evidence/review-validation.ts";
 import {
@@ -38,6 +39,32 @@ test("traffic-triggered monitoring rotates source priority fairly", () => {
   assert.deepEqual(new Set(first), new Set(second));
   assert.equal(new Set(first).size, first.length);
   assert.deepEqual(first.slice(0, 2).filter((sourceId) => second.slice(0, 2).includes(sourceId)), []);
+});
+
+test("historical election parser requires complete two-seat result tables", () => {
+  const section = (name, first, second) => `
+    <h2><a>${name}</a></h2>
+    <table class="results_table">
+      <tr><th>Candidate</th></tr>
+      <tr class="elected"><td></td><td>${first}</td><td>1234</td><td></td></tr>
+      <tr class="elected"><td></td><td>${second}</td><td>987</td><td></td></tr>
+      <tr><td></td><td>Other candidate</td><td>100</td><td></td></tr>
+    </table>`;
+  const names = [
+    "Arbory, Castletown and Malew", "Ayre and Michael", "Douglas Central", "Douglas East",
+    "Douglas North", "Douglas South", "Garff", "Glenfaba and Peel", "Middle", "Onchan",
+    "Ramsey", "Rushen",
+  ];
+  const parsed = parseHistoricalElectionResults(
+    names.map((name, index) => section(name, `Winner ${index} A`, `Winner ${index} B`)).join("\n"),
+  );
+
+  assert.equal(parsed.length, 36);
+  assert.equal(parsed.filter((result) => result.elected).length, 24);
+  assert.throws(
+    () => parseHistoricalElectionResults(section("Onchan", "A", "B")),
+    /Expected 12 historical-election result tables/,
+  );
 });
 
 test("candidate directory cards retain constituency and portrait provenance", () => {

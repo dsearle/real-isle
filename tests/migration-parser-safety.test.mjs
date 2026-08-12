@@ -50,15 +50,15 @@ function quotedSqlStrings(statement) {
   return statement.match(/'(?:''|[^'])*'/g) ?? [];
 }
 
-test("migrations 0010-0017 keep trigger SQL safe for the Sites BEGIN/END splitter", () => {
+test("migrations 0010-0020 keep trigger SQL safe for the Sites BEGIN/END splitter", () => {
   const files = migrationFiles().filter((file) => {
     const number = migrationNumber(file);
-    return number >= 10 && number <= 17;
+    return number >= 10 && number <= 20;
   });
 
   assert.deepEqual(
     files.map(migrationNumber),
-    [10, 11, 12, 13, 14, 15, 16, 17],
+    [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
   );
 
   let triggerCount = 0;
@@ -89,14 +89,14 @@ test("migrations 0010-0017 keep trigger SQL safe for the Sites BEGIN/END splitte
     }
   }
 
-  assert.ok(triggerCount > 0, "expected trigger definitions in migrations 0010-0017");
+  assert.ok(triggerCount > 0, "expected trigger definitions in migrations 0010-0020");
 });
 
-test("a fresh database accepts migrations through 0017 after Sites-style trigger splitting", () => {
+test("a fresh database accepts migrations through 0020 after Sites-style trigger splitting", () => {
   const db = new DatabaseSync(":memory:");
 
   try {
-    for (const file of migrationFiles().filter((file) => migrationNumber(file) <= 17)) {
+    for (const file of migrationFiles().filter((file) => migrationNumber(file) <= 20)) {
       for (const statement of migrationStatements(file)) {
         const sitesParsedStatement =
           migrationNumber(file) >= 10 && isCreateTrigger(statement)

@@ -3,6 +3,7 @@ import {
   candidateCatalogue,
   constituencyCatalogue,
   election,
+  historicalElectionCatalogue,
   monitoredSources,
   policyTopicCatalogue,
 } from "./catalogue.ts";
@@ -50,6 +51,23 @@ export async function seedEvidenceReferenceData(db: D1Database) {
       )
       .bind(election.id, election.name),
   ];
+
+  for (const historicalElection of historicalElectionCatalogue) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO elections (id, name, election_date, status, updated_at)
+           VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(id) DO NOTHING`,
+        )
+        .bind(
+          historicalElection.id,
+          historicalElection.name,
+          historicalElection.electionDate,
+          historicalElection.status,
+        ),
+    );
+  }
 
   for (const constituency of constituencyCatalogue) {
     statements.push(

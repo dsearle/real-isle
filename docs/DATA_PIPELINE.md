@@ -309,6 +309,37 @@ confidence. Future AI extraction must follow the same rule: model output is a
 private proposal with cited evidence, model/method metadata and an editorial
 review state, never an automatically published fact.
 
+## Historical election and MHK accountability lane
+
+The collector now keeps a separate historical election ledger. It imports the
+2021 House of Keys results archive into immutable `election_results` rows and
+creates a `member_terms` row only where the captured result marks a candidate
+as elected. The currently configured archive is labelled
+`secondary-reference`: it is useful for automated discovery and reconciliation,
+but a future Returning Officer result notice can be added as an
+`official-result` without overwriting the earlier observation.
+
+The system also scans tier-one parliamentary and government records already in
+the library for exact member-name references. Each match is stored as an
+immutable `member_activity_links` row with the source item version, mention
+hash and audit event. Its only meaning is **official-record reference**. It is
+not a claim that a member attended, voted, caused an outcome or fulfilled a
+promise.
+
+Manifestos, campaign statements, Hansard, Votes and Proceedings, committee
+records and government reports are intentionally different evidence classes.
+Automatic extraction can identify a directly quoted manifesto commitment or a
+factual record reference and place it under a person, constituency and policy
+topic. It must not infer a delivery verdict from either. A public accountability
+view can therefore say `evidence linked` or `no assessed conclusion yet`; only
+a separately cited, reviewable assessment may use `delivered`,
+`partly delivered`, `not delivered` or `disputed`.
+
+The historical result archive is polled weekly and the official-record linker
+works in small batches during normal collection. This makes both the initial
+backfill and future records automatic while preserving a clear path to correct
+source changes or contested interpretations.
+
 ## How collection runs
 
 Normal GET traffic wakes a bounded background check for due sources. Leases,

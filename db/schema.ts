@@ -90,6 +90,153 @@ export const candidacies = sqliteTable(
   ],
 );
 
+/**
+ * A source-backed result for one person in one House of Keys election.
+ *
+ * This is deliberately separate from a candidacy. A candidacy describes that
+ * someone stood; this ledger records what a particular results source said at
+ * a particular captured version. It lets the historical backfill be rerun
+ * without rewriting past observations.
+ */
+export const electionResults = sqliteTable(
+  "election_results",
+  {
+    id: text("id").primaryKey(),
+    electionId: text("election_id")
+      .notNull()
+      .references(() => elections.id, { onDelete: "cascade" }),
+    candidacyId: text("candidacy_id")
+      .notNull()
+      .references(() => candidacies.id, { onDelete: "cascade" }),
+    sourceItemVersionId: text("source_item_version_id")
+      .notNull()
+      .references(() => sourceItemVersions.id),
+    sourceSnapshotId: text("source_snapshot_id")
+      .notNull()
+      .references(() => sourceSnapshots.id),
+    votes: integer("votes").notNull(),
+    elected: integer("elected", { mode: "boolean" }).notNull(),
+    sourceClassification: text("source_classification").notNull(),
+    observedAt: text("observed_at").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_election_results_version_candidate").on(
+      table.sourceItemVersionId,
+      table.candidacyId,
+    ),
+    index("idx_election_results_election_elected").on(table.electionId, table.elected),
+    index("idx_election_results_candidacy").on(table.candidacyId, table.observedAt),
+    check("election_results_votes_check", sql`${table.votes} >= 0`),
+    check(
+      "election_results_source_classification_check",
+      sql`${table.sourceClassification} IN ('official-result', 'secondary-reference')`,
+    ),
+  ],
+);
+
+/** A period of service inferred only from a captured election result. */
+export const memberTerms = sqliteTable(
+  "member_terms",
+  {
+    id: text("id").primaryKey(),
+    personId: text("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+    electionId: text("election_id")
+      .notNull()
+      .references(() => elections.id, { onDelete: "cascade" }),
+    candidacyId: text("candidacy_id")
+      .notNull()
+      .references(() => candidacies.id, { onDelete: "cascade" }),
+    resultId: text("result_id")
+      .notNull()
+      .references(() => electionResults.id),
+    startedAt: text("started_at").notNull(),
+    endedAt: text("ended_at"),
+    termState: text("term_state").notNull().default("historical"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_member_terms_result").on(table.resultId),
+    index("idx_member_terms_person").on(table.personId, table.startedAt),
+    check(
+      "member_terms_state_check",
+      sql`${table.termState} IN ('historical', 'current', 'ended', 'vacant')`,
+    ),
+  ],
+);
+
+/**
+ * A deterministic link from an official record to a historical MHK term.
+ * It is intentionally a reference, not a delivery verdict: a name appearing
+ * in Hansard or a government record is evidence to inspect, not proof that a
+ * manifesto commitment was completed.
+ */
+export const memberActivityLinks = sqliteTable(
+  "member_activity_links",
+  {
+    id: text("id").primaryKey(),
+    memberTermId: text("member_term_id")
+      .notNull()
+      .references(() => memberTerms.id, { onDelete: "cascade" }),
+    sourceItemVersionId: text("source_item_version_id")
+      .notNull()
+      .references(() => sourceItemVersions.id),
+    sourceItemId: text("source_item_id")
+      .notNull()
+      .references(() => sourceItems.id),
+    linkKind: text("link_kind").notNull(),
+    mentionText: text("mention_text").notNull(),
+    mentionHash: text("mention_hash").notNull(),
+    createdByAuditEventId: text("created_by_audit_event_id")
+      .notNull()
+      .references(() => auditEvents.id),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("idx_member_activity_version_term").on(
+      table.sourceItemVersionId,
+      table.memberTermId,
+    ),
+    index("idx_member_activity_term").on(table.memberTermId, table.createdAt),
+    index("idx_member_activity_item").on(table.sourceItemId, table.createdAt),
+    check(
+      "member_activity_link_kind_check",
+      sql`${table.linkKind} IN ('official-record-reference')`,
+    ),
+    check(
+      "member_activity_mention_hash_check",
+      sql`length(${table.mentionHash}) = 64 AND ${table.mentionHash} NOT GLOB '*[^0-9a-f]*'`,
+    ),
+  ],
+);
+
+/** Immutable completion ledger so non-matching official records do not starve older work. */
+export const memberActivityScans = sqliteTable(
+  "member_activity_scans",
+  {
+    sourceItemVersionId: text("source_item_version_id")
+      .primaryKey()
+      .references(() => sourceItemVersions.id),
+    sourceItemId: text("source_item_id")
+      .notNull()
+      .references(() => sourceItems.id),
+    outcome: text("outcome").notNull(),
+    createdByAuditEventId: text("created_by_audit_event_id")
+      .notNull()
+      .references(() => auditEvents.id),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("idx_member_activity_scans_item").on(table.sourceItemId, table.createdAt),
+    check(
+      "member_activity_scans_outcome_check",
+      sql`${table.outcome} IN ('linked', 'no-match')`,
+    ),
+  ],
+);
+
 export const policyTopics = sqliteTable(
   "policy_topics",
   {

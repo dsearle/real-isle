@@ -4,7 +4,7 @@ export type MonitoredSource = {
   active: boolean;
   allowedHosts: readonly string[];
   documentHosts: readonly string[];
-  feedType: "rss" | "atom" | "youtube" | "candidate-directory";
+  feedType: "rss" | "atom" | "youtube" | "candidate-directory" | "historical-election-results";
   feedUrl: string;
   homepageUrl: string;
   id: string;
@@ -22,6 +22,22 @@ export const election = {
   id: "hok-2026",
   name: "2026 House of Keys General Election",
 };
+
+/**
+ * Historical elections are collected in their own lane.  The first source is
+ * a public results archive rather than an official returning-officer export,
+ * so every imported result remains visibly marked as a secondary reference
+ * until a primary result notice is added.
+ */
+export const historicalElectionCatalogue = [
+  {
+    electionDate: "2021-09-23",
+    id: "hok-2021",
+    name: "2021 House of Keys General Election",
+    resultsSourceId: "iom-elections-2021-results",
+    status: "completed",
+  },
+] as const;
 
 export const policyTopicCatalogue = [
   { id: "economy", name: "Economy", keywords: ["economy", "economic", "growth", "business"] },
@@ -52,6 +68,23 @@ export const policyTopicCatalogue = [
 // Feed URLs are verified before activation. Sources can remain in the catalogue
 // with active=false until their publisher exposes a stable machine-readable feed.
 export const monitoredSources: MonitoredSource[] = [
+  {
+    id: "iom-elections-2021-results",
+    name: "2021 House of Keys results archive",
+    publisher: "IOM Elections / 3 Legs Ltd",
+    homepageUrl: "https://iomelections.com/2021/",
+    feedUrl: "https://iomelections.com/2021/results/",
+    feedType: "historical-election-results",
+    itemType: "official",
+    sourceTier: 2,
+    active: true,
+    allowedHosts: ["iomelections.com", "www.iomelections.com"],
+    documentHosts: [],
+    minimumRequestIntervalMs: 8_000,
+    pollIntervalMinutes: 10_080,
+    rightsState: "metadata-only",
+    storeFullContent: false,
+  },
   {
     id: "manx-radio-election",
     name: "Manx Radio election news",

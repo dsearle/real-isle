@@ -3,9 +3,15 @@ import { appendAuditEventWithStatements } from "./audit";
 import {
   constituencyCatalogue,
   election,
+  historicalElectionCatalogue,
   monitoredSources,
   type MonitoredSource,
 } from "./catalogue";
+import {
+  historicalPersonSlug,
+  parseHistoricalElectionResults,
+} from "./historical-election-results";
+import { backfillHistoricalMemberActivityLinks } from "./historical-accountability";
 import {
   candidateProfileMatchesExpectedIdentity,
   parseCandidateDirectory,
@@ -2731,6 +2737,314 @@ async function runSource(
   }
 }
 
+async function runHistoricalElectionResultsSource(
+  bindings: EvidenceBindings,
+  source: MonitoredSource,
+  command: IngestionCommand,
+  leaseToken: string,
+) {
+  const historicalElection = historicalElectionCatalogue.find(
+    (candidate) => candidate.resultsSourceId === source.id,
+  );
+  if (!historicalElection) throw new Error(`No historical election is configured for ${source.id}.`);
+
+  const db = bindings.DB;
+  const runId = randomId("run");
+  const startedAt = new Date().toISOString();
+  const idempotencyKey = `${command.idempotencyKey}:${source.id}`;
+  const replay = await db
+    .prepare("SELECT id, status FROM ingestion_runs WHERE idempotency_key = ?")
+    .bind(idempotencyKey)
+    .first<{ id: string; status: string }>();
+  if (replay) {
+    await releaseLease(db, source.id, leaseToken);
+    return {
+      changed: 0,
+      discovered: 0,
+      errors: 0,
+      inserted: 0,
+      runId: replay.id,
+      sourceId: source.id,
+      status: replay.status === "failed" || replay.status === "partial" ? replay.status : "replayed",
+      unchanged: 0,
+    } satisfies SourceRunResult;
+  }
+
+  await db
+    .prepare(
+      `INSERT INTO ingestion_runs (
+        id, source_id, trigger, idempotency_key, actor_type, actor_id,
+        parser_version, status, started_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'historical-election-results-v1', 'running', ?)`,
+    )
+    .bind(
+      runId,
+      source.id,
+      command.trigger,
+      idempotencyKey,
+      command.actor.type,
+      command.actor.id,
+      startedAt,
+    )
+    .run();
+  const sourceState =
+    (await db
+      .prepare("SELECT etag, last_modified, consecutive_failures FROM sources WHERE id = ?")
+      .bind(source.id)
+      .first<SourceState>()) ?? { consecutive_failures: 0, etag: null, last_modified: null };
+
+  let capturedSnapshot: StoredSnapshot | null = null;
+  try {
+    const response = await fetchBoundedWithHostLimit(db, source.feedUrl, source, {
+      acceptedContentTypes: HTML_CONTENT_TYPES,
+      etag: sourceState.etag,
+      lastModified: sourceState.last_modified,
+      maximumBytes: MAX_FEED_BYTES,
+    });
+    if (!isBoundedResponse(response)) {
+      const finishedAt = new Date();
+      await appendAuditEventWithStatements(
+        db,
+        {
+          action: "ingestion-run.no-change",
+          actorId: command.actor.id,
+          actorType: command.actor.type,
+          entityId: runId,
+          entityType: "ingestion-run",
+          payload: { httpStatus: 304, sourceId: source.id },
+        },
+        (audit) => [
+          db
+            .prepare(
+              `UPDATE ingestion_runs SET status = 'no_change', finished_at = ?, http_status = 304,
+               audit_head_hash = ? WHERE id = ?`,
+            )
+            .bind(finishedAt.toISOString(), audit.eventHash, runId),
+          db
+            .prepare(
+              `UPDATE sources SET last_success_at = ?, last_error = NULL, consecutive_failures = 0,
+               next_check_at = ?, lease_token = NULL, lease_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND lease_token = ?`,
+            )
+            .bind(
+              finishedAt.toISOString(),
+              plusMinutes(finishedAt, source.pollIntervalMinutes),
+              source.id,
+              leaseToken,
+            ),
+        ],
+      );
+      return {
+        changed: 0,
+        discovered: 0,
+        errors: 0,
+        inserted: 0,
+        runId,
+        sourceId: source.id,
+        status: "no_change",
+        unchanged: 0,
+      } satisfies SourceRunResult;
+    }
+
+    const historicalSnapshot = await storeSnapshot({
+      bindings,
+      captureUrl: source.feedUrl,
+      itemId: null,
+      response,
+      runId,
+      source,
+    });
+    capturedSnapshot = historicalSnapshot;
+    const html = new TextDecoder("utf-8", { fatal: false }).decode(response.bytes);
+    const results = parseHistoricalElectionResults(html);
+    const resultSummary = results
+      .map((result) => `${result.constituencyName}|${result.fullName}|${result.votes}|${result.elected ? 1 : 0}`)
+      .join("\n");
+    const item = {
+      author: null,
+      externalId: `${historicalElection.id}:results`,
+      publishedAt: historicalElection.electionDate,
+      summary: resultSummary,
+      title: `${historicalElection.name} results archive`,
+      url: source.feedUrl,
+    } satisfies NormalizedFeedItem;
+    const processed = await processFeedItem({
+      bindings,
+      feedSnapshotId: historicalSnapshot.id,
+      item,
+      runId,
+      source,
+    });
+    const sourceItem = await db
+      .prepare(
+        `SELECT id, latest_version_id FROM source_items
+         WHERE source_id = ? AND external_id = ?`,
+      )
+      .bind(source.id, item.externalId)
+      .first<{ id: string; latest_version_id: string | null }>();
+    if (!sourceItem?.latest_version_id) throw new Error("Historical results source version was not stored.");
+
+    const resultStatements: D1PreparedStatement[] = [];
+    for (const result of results) {
+      const constituencyId = constituencyIdForName(result.constituencyName);
+      const slug = historicalPersonSlug(result.fullName);
+      // The election suffix avoids merging an archive name match with a live
+      // profile automatically. Identity reconciliation is a separate, audited
+      // process; the result itself remains useful and verifiable either way.
+      const personId = `historic-${historicalElection.id}:${slug}`;
+      const candidacyId = `${historicalElection.id}:${slug}`;
+      const resultId = await deterministicId(
+        "election-result",
+        sourceItem.latest_version_id,
+        candidacyId,
+      );
+      resultStatements.push(
+        db
+          .prepare(
+            `INSERT INTO people (id, full_name, sort_name, profile_state, updated_at)
+             VALUES (?, ?, ?, 'reviewed', CURRENT_TIMESTAMP)
+             ON CONFLICT(id) DO NOTHING`,
+          )
+          .bind(personId, result.fullName, `${candidateSortName(result.fullName)} [${historicalElection.id}]`),
+        db
+          .prepare(
+            `INSERT INTO candidacies (
+              id, election_id, person_id, constituency_id, affiliation,
+              declaration_status, verification_state, updated_at
+            ) VALUES (?, ?, ?, ?, 'Unknown', ?, 'source-verified', CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO NOTHING`,
+          )
+          .bind(
+            candidacyId,
+            historicalElection.id,
+            personId,
+            constituencyId,
+            result.elected ? "elected" : "not-elected",
+          ),
+        db
+          .prepare(
+            `INSERT INTO election_results (
+              id, election_id, candidacy_id, source_item_version_id, source_snapshot_id,
+              votes, elected, source_classification, observed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'secondary-reference', ?)
+            ON CONFLICT(source_item_version_id, candidacy_id) DO NOTHING`,
+          )
+          .bind(
+            resultId,
+            historicalElection.id,
+            candidacyId,
+            sourceItem.latest_version_id,
+            historicalSnapshot.id,
+            result.votes,
+            result.elected ? 1 : 0,
+            startedAt,
+          ),
+      );
+      if (result.elected) {
+        resultStatements.push(
+          db
+            .prepare(
+              `INSERT INTO member_terms (
+                id, person_id, election_id, candidacy_id, result_id, started_at, ended_at, term_state
+              ) VALUES (?, ?, ?, ?, ?, ?, '2026-09-24', 'historical')
+              ON CONFLICT(result_id) DO NOTHING`,
+            )
+            .bind(
+              await deterministicId("member-term", resultId),
+              personId,
+              historicalElection.id,
+              candidacyId,
+              resultId,
+              historicalElection.electionDate,
+            ),
+        );
+      }
+    }
+    const finishedAt = new Date();
+    await appendAuditEventWithStatements(
+      db,
+      {
+        action: "historical-election.results-imported",
+        actorId: command.actor.id,
+        actorType: command.actor.type,
+        entityId: historicalElection.id,
+        entityType: "election",
+        payload: {
+          candidateCount: results.length,
+          electedCount: results.filter((result) => result.elected).length,
+          snapshotId: historicalSnapshot.id,
+          sourceClassification: "secondary-reference",
+          sourceId: source.id,
+          sourceItemVersionId: sourceItem.latest_version_id,
+        },
+      },
+      (audit) => [
+        ...resultStatements,
+        db
+          .prepare(
+            `UPDATE ingestion_runs SET status = ?, finished_at = ?, discovered_count = ?,
+             processed_item_count = 1, new_item_count = ?, changed_item_count = ?,
+             unchanged_item_count = ?, error_count = 0, feed_snapshot_id = ?,
+             audit_head_hash = ?, http_status = ? WHERE id = ?`,
+          )
+          .bind(
+            processed.outcome === "new" || processed.outcome === "changed" ? "succeeded" : "no_change",
+            finishedAt.toISOString(),
+            results.length,
+            processed.outcome === "new" ? 1 : 0,
+            processed.outcome === "changed" ? 1 : 0,
+            processed.outcome === "unchanged" ? 1 : 0,
+            historicalSnapshot.id,
+            audit.eventHash,
+            response.status,
+            runId,
+          ),
+        db
+          .prepare(
+            `UPDATE sources SET etag = ?, last_modified = ?, last_success_at = ?, last_error = NULL,
+             consecutive_failures = 0, next_check_at = ?, lease_token = NULL, lease_expires_at = NULL,
+             last_new_item_at = CASE WHEN ? THEN ? ELSE last_new_item_at END, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND lease_token = ?`,
+          )
+          .bind(
+            response.etag,
+            response.lastModified,
+            finishedAt.toISOString(),
+            plusMinutes(finishedAt, source.pollIntervalMinutes),
+            processed.outcome === "new" || processed.outcome === "changed" ? 1 : 0,
+            finishedAt.toISOString(),
+            source.id,
+            leaseToken,
+          ),
+      ],
+    );
+    return {
+      changed: processed.outcome === "changed" ? 1 : 0,
+      discovered: results.length,
+      errors: 0,
+      inserted: processed.outcome === "new" ? 1 : 0,
+      runId,
+      sourceId: source.id,
+      status: processed.outcome === "new" || processed.outcome === "changed" ? "succeeded" : "no_change",
+      unchanged: processed.outcome === "unchanged" ? 1 : 0,
+    } satisfies SourceRunResult;
+  } catch (error) {
+    await markRunFailed(db, source, runId, leaseToken, sourceState, error, capturedSnapshot);
+    return {
+      changed: 0,
+      discovered: 0,
+      errors: 1,
+      inserted: 0,
+      runId,
+      sourceId: source.id,
+      status: "failed",
+      unchanged: 0,
+    } satisfies SourceRunResult;
+  } finally {
+    await releaseLease(db, source.id, leaseToken);
+  }
+}
+
 export async function backfillLegacyCollectionAssessments(
   db: D1Database,
   actor: IngestionActor,
@@ -2828,7 +3142,9 @@ export async function runEvidenceIngestion(
     runs.push(
       source.feedType === "candidate-directory"
         ? await runCandidateDirectorySource(bindings, source, command, leaseToken)
-        : await runSource(bindings, source, command, leaseToken),
+        : source.feedType === "historical-election-results"
+          ? await runHistoricalElectionResultsSource(bindings, source, command, leaseToken)
+          : await runSource(bindings, source, command, leaseToken),
     );
   }
   // An explicit empty source list is the documented safe “assess only” mode.
@@ -2842,6 +3158,14 @@ export async function runEvidenceIngestion(
       analyze: analyzeReadableDocument,
       limit: command.trigger === "traffic" ? 1 : 4,
     });
+  // This uses only names found in tier-one records and creates references, not
+  // delivery judgements. It gradually categorises the existing official
+  // library after the historical term ledger has been imported.
+  await backfillHistoricalMemberActivityLinks(
+    bindings.DB,
+    command.actor,
+    command.trigger === "traffic" ? 2 : 8,
+  );
   return { documents, invocationId: command.idempotencyKey, runs };
 }
 
