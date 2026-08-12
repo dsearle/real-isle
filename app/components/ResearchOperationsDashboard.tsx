@@ -1343,6 +1343,7 @@ function EvidencePanel({
     try {
       let approved = 0;
       let conflicts = 0;
+      let prepared = 0;
       let rejected = 0;
       let remaining = 0;
       let skipped = 0;
@@ -1357,17 +1358,18 @@ function EvidencePanel({
         });
         const result = await response.json() as {
           error?: string;
-          summary?: { approved: number; attempted: number; conflicts: number; rejected: number; remaining: number; skipped: number };
+          summary?: { approved: number; attempted: number; conflicts: number; prepared?: number; rejected: number; remaining: number; skipped: number };
         };
         if (!response.ok || !result.summary) throw new Error(result.error ?? "Automatic review could not be completed.");
         approved += result.summary.approved;
         conflicts += result.summary.conflicts;
+        prepared += result.summary.prepared ?? 0;
         rejected += result.summary.rejected;
         remaining = result.summary.remaining;
         skipped = result.summary.skipped;
         if (result.summary.attempted === 0 || remaining === 0) break;
       }
-      setAutomaticReviewMessage(`Automatic triage recorded ${approved} approvals and ${rejected} withholdings.${conflicts ? ` ${conflicts} changed record${conflicts === 1 ? "" : "s"} will retry.` : ""}${skipped ? ` ${skipped} record${skipped === 1 ? "" : "s"} still need a frozen collection assessment.` : ""}${remaining ? ` ${remaining} pending record${remaining === 1 ? "" : "s"} remain for the next automated pass.` : " Inbox cleared."}`);
+      setAutomaticReviewMessage(`Automatic triage prepared ${prepared} source version${prepared === 1 ? "" : "s"}, recorded ${approved} approval${approved === 1 ? "" : "s"} and ${rejected} withholding${rejected === 1 ? "" : "s"}.${conflicts ? ` ${conflicts} changed record${conflicts === 1 ? "" : "s"} will retry.` : ""}${skipped ? ` ${skipped} record${skipped === 1 ? "" : "s"} still need a frozen collection assessment.` : ""}${remaining ? ` ${remaining} pending record${remaining === 1 ? "" : "s"} remain for the next automated pass.` : " Inbox cleared."}`);
       router.refresh();
     } catch (error) {
       setAutomaticReviewMessage(error instanceof Error ? error.message : "Automatic review could not be completed.");

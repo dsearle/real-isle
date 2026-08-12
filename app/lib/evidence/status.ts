@@ -1225,12 +1225,18 @@ export async function getEvidenceDashboardForDatabase(
       ),
       collectionScopeSuggestionFingerprint: await fingerprintScopeSuggestions([
         ...constituencyAssociations.map((association) => ({
-          ...association,
+          confidence: association.confidence,
           entityType: "constituency" as const,
+          id: association.id,
+          matchMethod: association.matchMethod,
+          mentionText: association.mentionText,
         })),
         ...topicAssociations.map((association) => ({
-          ...association,
+          confidence: association.confidence,
           entityType: "topic" as const,
+          id: association.id,
+          matchMethod: association.matchMethod,
+          mentionText: association.mentionText,
         })),
       ]),
       topicAssociations,

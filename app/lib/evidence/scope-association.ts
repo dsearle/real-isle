@@ -12,7 +12,13 @@ export function fingerprintScopeSuggestions(
   suggestions: ScopeSuggestionFingerprintInput[],
 ) {
   const ordered = suggestions
-    .map((suggestion) => ({ ...suggestion }))
+    .map((suggestion) => ({
+      confidence: suggestion.confidence,
+      entityType: suggestion.entityType,
+      id: suggestion.id,
+      matchMethod: suggestion.matchMethod,
+      mentionText: suggestion.mentionText,
+    }))
     .sort((left, right) => {
       if (left.entityType !== right.entityType) {
         return left.entityType < right.entityType ? -1 : 1;

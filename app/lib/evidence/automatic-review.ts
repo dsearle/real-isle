@@ -1,4 +1,9 @@
 import { getEvidenceDashboardForDatabase, type EvidenceReviewItem } from "./status.ts";
+import {
+  CollectionPreparationConflictError,
+  CollectionPreparationValidationError,
+  prepareSourceItemVersionForReview,
+} from "./collection-preparation.ts";
 import { reviewSourceItemVersion, type SourceItemReviewReceipt } from "./review.ts";
 
 /** The durable identity used in both the review and audit ledgers. */
@@ -13,6 +18,7 @@ export type AutomaticEvidenceReviewSummary = {
   approved: number;
   attempted: number;
   conflicts: number;
+  prepared: number;
   rejected: number;
   remaining: number;
   skipped: number;
@@ -55,6 +61,51 @@ function isActionable(item: EvidenceReviewItem) {
     );
 }
 
+function isPending(item: EvidenceReviewItem) {
+  return item.editorialState === "pending";
+}
+
+function hasReviewableHead(item: EvidenceReviewItem) {
+  return Boolean(item.latest_version_id && item.content_hash);
+}
+
+async function prepareMissingAssessments(
+  db: D1Database,
+  items: EvidenceReviewItem[],
+  limit: number,
+) {
+  let prepared = 0;
+  let skipped = 0;
+  const missing = items.filter((item) => (
+    isPending(item)
+    && item.collectionReasonState !== "frozen"
+    && hasReviewableHead(item)
+  ));
+
+  for (const item of missing.slice(0, limit)) {
+    try {
+      const receipt = await prepareSourceItemVersionForReview(db, {
+        actorId: AUTOMATIC_EVIDENCE_REVIEWER_ID,
+        expectedContentHash: item.content_hash!,
+        expectedVersionId: item.latest_version_id!,
+        itemId: item.id,
+      });
+      if (!receipt.idempotent) prepared += 1;
+    } catch (error) {
+      if (
+        error instanceof CollectionPreparationConflictError
+        || error instanceof CollectionPreparationValidationError
+      ) {
+        skipped += 1;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return { prepared, skipped };
+}
+
 /**
  * Drains a bounded portion of the private evidence inbox. The bounded batch
  * keeps a scheduled invocation predictable; later runs continue until no
@@ -65,19 +116,24 @@ export async function automaticallyReviewEvidenceLibrary(
   options: { limit?: number } = {},
 ): Promise<AutomaticEvidenceReviewSummary> {
   const limit = Math.max(1, Math.min(options.limit ?? 80, 120));
-  const dashboard = await getEvidenceDashboardForDatabase(db);
+  let dashboard = await getEvidenceDashboardForDatabase(db);
+  const preparation = await prepareMissingAssessments(db, dashboard.reviewItems, limit);
+  if (preparation.prepared > 0) {
+    dashboard = await getEvidenceDashboardForDatabase(db);
+  }
   const pending = dashboard.reviewItems.filter(isActionable);
-  const candidates = pending.slice(0, limit);
   const summary: AutomaticEvidenceReviewSummary = {
     approved: 0,
     attempted: 0,
     conflicts: 0,
+    prepared: preparation.prepared,
     rejected: 0,
-    remaining: Math.max(0, pending.length - candidates.length),
-    skipped: dashboard.reviewItems.filter((item) => item.editorialState === "pending").length - pending.length,
+    remaining: pending.length,
+    skipped: dashboard.reviewItems.filter(isPending).length - pending.length + preparation.skipped,
   };
 
-  for (const item of candidates) {
+  for (const item of pending) {
+    if (summary.approved + summary.rejected >= limit) break;
     const autoDecision = automaticEvidenceReviewDecision(item);
     summary.attempted += 1;
     try {
@@ -118,6 +174,11 @@ export async function automaticallyReviewEvidenceLibrary(
       throw error;
     }
   }
+
+  const after = await getEvidenceDashboardForDatabase(db);
+  const afterPending = after.reviewItems.filter(isActionable);
+  summary.remaining = afterPending.length;
+  summary.skipped = after.reviewItems.filter(isPending).length - afterPending.length;
 
   return summary;
 }

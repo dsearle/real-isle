@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { automaticEvidenceReviewDecision } from "../app/lib/evidence/automatic-review.ts";
+import { fingerprintScopeSuggestions } from "../app/lib/evidence/scope-association.ts";
 
 function reviewItem({
   candidates = [],
@@ -40,4 +41,24 @@ test("automatic triage withholds contextual, broad and ambiguous material instea
     assert.equal(decision.decision, "rejected");
     assert.match(decision.rationale, /withheld.*retained for audit/i);
   }
+});
+
+test("scope suggestion fingerprints ignore display-only fields", async () => {
+  const canonical = await fingerprintScopeSuggestions([{
+    confidence: 0.9,
+    entityType: "constituency",
+    id: "douglas-north",
+    matchMethod: "deterministic-keyword-v1",
+    mentionText: "Douglas North",
+  }]);
+  const withDisplayLabel = await fingerprintScopeSuggestions([{
+    confidence: 0.9,
+    entityType: "constituency",
+    id: "douglas-north",
+    label: "Douglas North",
+    matchMethod: "deterministic-keyword-v1",
+    mentionText: "Douglas North",
+  }]);
+
+  assert.equal(withDisplayLabel, canonical);
 });
