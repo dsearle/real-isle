@@ -35,6 +35,12 @@ export type SourceItemReviewInput = {
   rationale: string;
   reviewKind: "candidate-assignment" | "source-version";
   reviewerId: string;
+  /**
+   * System triage is intentionally auditable as a system action rather than
+   * being presented as a founder or editor decision.  API callers omit this
+   * field and therefore remain admin reviews.
+   */
+  reviewerType?: "admin" | "system";
   scopeSuggestionFingerprint: string;
   topicIds: string[];
 };
@@ -785,7 +791,7 @@ export async function reviewSourceItemVersion(
       {
         action: auditAction,
         actorId: input.reviewerId,
-        actorType: "admin",
+        actorType: input.reviewerType ?? "admin",
         entityId: input.expectedVersionId,
         entityType: "source-item-version",
         payload: {

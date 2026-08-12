@@ -48,6 +48,10 @@ import { parseFeed, type NormalizedFeedItem } from "./feed";
 import { deterministicId, randomId, sha256Hex, stableJson } from "./integrity";
 import { rotateSourceIdsForWindow } from "./ingestion-scheduling";
 import { analyzeReadableDocument } from "./machine-analysis";
+import {
+  automaticallyReviewEvidenceLibrary,
+  type AutomaticEvidenceReviewSummary,
+} from "./automatic-review";
 import { fetchBounded, type BoundedResponse } from "./network";
 import { seedEvidenceReferenceData } from "./seed";
 import { ensureEvidenceTriggers } from "./triggers";
@@ -93,6 +97,7 @@ export type SourceRunResult = {
 };
 
 export type IngestionResult = {
+  automaticReview: AutomaticEvidenceReviewSummary;
   documents: DocumentAcquisitionSummary | null;
   invocationId: string;
   runs: SourceRunResult[];
@@ -3052,7 +3057,7 @@ export async function backfillLegacyCollectionAssessments(
 ) {
   const items = await db
     .prepare(legacyCollectionAssessmentBacklogSql)
-    .bind(Math.max(1, Math.min(limit, 20)))
+    .bind(Math.max(1, Math.min(limit, 120)))
     .all<LegacyCollectionItem>();
   const candidateMatchers = await db
     .prepare(candidateMatchersSql)
@@ -3101,10 +3106,13 @@ export async function runEvidenceIngestion(
   // Existing evidence is progressively frozen into the same versioned relevance
   // ledger as new captures.  Keep traffic-triggered work small; the scheduler
   // clears the library steadily without letting one invocation monopolise D1.
+  const assessmentLimit = command.trigger === "scheduler" || command.trigger === "manual"
+    ? 120
+    : 24;
   await backfillLegacyCollectionAssessments(
     bindings.DB,
     command.actor,
-    command.trigger === "scheduler" ? 20 : command.trigger === "manual" ? 12 : 8,
+    assessmentLimit,
   );
   const allowedSourceIds = new Set(command.sourceIds ?? monitoredSources.map((source) => source.id));
   const sourceOrder = new Map(command.sourceIds?.map((sourceId, index) => [sourceId, index]) ?? []);
@@ -3147,6 +3155,12 @@ export async function runEvidenceIngestion(
           : await runSource(bindings, source, command, leaseToken),
     );
   }
+  // Assess newly collected versions before classifying the library. This lets
+  // one scheduled run both discover a record and move it out of the inbox.
+  await backfillLegacyCollectionAssessments(bindings.DB, command.actor, 36);
+  const automaticReview = await automaticallyReviewEvidenceLibrary(bindings.DB, {
+    limit: command.trigger === "traffic" ? 24 : 120,
+  });
   // An explicit empty source list is the documented safe “assess only” mode.
   // It must not make any publisher request.  Ordinary scheduled/manual runs
   // scrape a small, fair rotation of already-assessed eligible pages and feed
@@ -3166,7 +3180,7 @@ export async function runEvidenceIngestion(
     command.actor,
     command.trigger === "traffic" ? 2 : 8,
   );
-  return { documents, invocationId: command.idempotencyKey, runs };
+  return { automaticReview, documents, invocationId: command.idempotencyKey, runs };
 }
 
 export function trafficSourceIdsForWindow(tenMinuteWindow: number) {

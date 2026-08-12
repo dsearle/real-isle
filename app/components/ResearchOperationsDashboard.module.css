@@ -312,6 +312,26 @@
   padding: 28px;
 }
 
+.automaticReviewAction {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1rem;
+  margin-top: 1.1rem;
+}
+
+.automaticReviewAction > span,
+.automaticReviewAction > p {
+  color: #4c6265;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.automaticReviewAction > p {
+  flex-basis: 100%;
+}
+
 .panelIntro h2 {
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(30px, 4vw, 49px);

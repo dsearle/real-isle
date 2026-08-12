@@ -1331,9 +1331,37 @@ function EvidencePanel({
   receipts: ReviewReceipts;
   onDecided: (receipt: ReviewReceipt) => void;
 }) {
+  const router = useRouter();
   const [editorialState, setEditorialState] = useState<EditorialState>("pending");
   const [collectionRoute, setCollectionRoute] = useState<CollectionRoute>("evidence-review");
   const [page, setPage] = useState(0);
+  const [automaticReviewPending, setAutomaticReviewPending] = useState(false);
+  const [automaticReviewMessage, setAutomaticReviewMessage] = useState<string | null>(null);
+  async function runAutomaticReview() {
+    setAutomaticReviewPending(true);
+    setAutomaticReviewMessage(null);
+    try {
+      const response = await fetch("/api/admin/evidence/auto-review", {
+        body: JSON.stringify({ limit: 120 }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      const result = await response.json() as {
+        error?: string;
+        summary?: { approved: number; conflicts: number; rejected: number; remaining: number; skipped: number };
+      };
+      if (!response.ok || !result.summary) throw new Error(result.error ?? "Automatic review could not be completed.");
+      const { approved, conflicts, rejected, remaining, skipped } = result.summary;
+      setAutomaticReviewMessage(
+        `Automatic triage recorded ${approved} approvals and ${rejected} withholdings.${conflicts ? ` ${conflicts} changed record${conflicts === 1 ? "" : "s"} will retry.` : ""}${skipped ? ` ${skipped} record${skipped === 1 ? "" : "s"} still need a frozen collection assessment.` : ""}${remaining ? ` ${remaining} pending record${remaining === 1 ? "" : "s"} will be handled by the next pass.` : " Inbox cleared."}`,
+      );
+      router.refresh();
+    } catch (error) {
+      setAutomaticReviewMessage(error instanceof Error ? error.message : "Automatic review could not be completed.");
+    } finally {
+      setAutomaticReviewPending(false);
+    }
+  }
   const effectiveState = (item: EvidenceReviewItem): EditorialState => {
     const receipt = item.latest_version_id
       ? receipts[reviewReceiptKey(item.latest_version_id, "source-version")]
@@ -1363,8 +1391,15 @@ function EvidencePanel({
   return (
     <div className={styles.panelStack}>
       <section className={styles.panelIntro}>
-        <div><span>Editorial evidence library</span><h2>Review, publish, withhold and reconsider every source.</h2></div>
-        <p>Approval publishes citation metadata into the relevant candidate, topic and constituency evidence sections. Rejection withholds it without deleting the source, and every later change supersedes rather than rewrites the audit history.</p>
+        <div><span>Editorial evidence library</span><h2>Automatically classify, publish, withhold and reconsider every source.</h2></div>
+        <p>Clear candidate matches and dedicated election sources are automatically classified with an auditable system decision. Everything else is withheld rather than guessed into a candidate record; every decision can be reconsidered later.</p>
+        <div className={styles.automaticReviewAction}>
+          <button className={styles.approveButton} disabled={automaticReviewPending} onClick={runAutomaticReview} type="button">
+            {automaticReviewPending ? "Classifying…" : "Run automatic triage"}
+          </button>
+          <span>Processes up to 120 frozen source versions; scheduled runs continue the backlog.</span>
+          {automaticReviewMessage ? <p aria-live="polite">{automaticReviewMessage}</p> : null}
+        </div>
       </section>
       <nav aria-label="Editorial decision states" className={styles.reviewStateBar}>
         {editorialStates.map((state) => (

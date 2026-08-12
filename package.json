@@ -13,7 +13,7 @@
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "terrain:fetch": "node scripts/fetch-iom-terrain.mjs",
     "test": "npm run test:evidence && npm run build && node --test tests/rendered-html.test.mjs",
-    "test:evidence": "node --experimental-strip-types --test tests/candidate-intelligence.test.mjs tests/candidate-profile-lifecycle.test.mjs tests/collection-assessment.test.mjs tests/collection-preparation.test.mjs tests/collection-reason.test.mjs tests/document-acquisition.test.mjs tests/editorial-lifecycle.test.mjs tests/evidence-base-guards.test.mjs tests/evidence-core.test.mjs tests/machine-analysis-view.test.mjs tests/migration-parser-safety.test.mjs tests/public-evidence.test.mjs tests/public-monitor.test.mjs tests/public-publication-head.test.mjs",
+    "test:evidence": "node --experimental-strip-types --test tests/automatic-evidence-review.test.mjs tests/candidate-intelligence.test.mjs tests/candidate-profile-lifecycle.test.mjs tests/collection-assessment.test.mjs tests/collection-preparation.test.mjs tests/collection-reason.test.mjs tests/document-acquisition.test.mjs tests/editorial-lifecycle.test.mjs tests/evidence-base-guards.test.mjs tests/evidence-core.test.mjs tests/machine-analysis-view.test.mjs tests/migration-parser-safety.test.mjs tests/public-evidence.test.mjs tests/public-monitor.test.mjs tests/public-publication-head.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
